@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
-import 'lobby_screen.dart';
 import '../services/api_service.dart';
+import '../styles/app_theme.dart';
+import 'lobby_screen.dart'; // Assurez-vous que le chemin est correct
 
 class HomeScreen extends StatefulWidget {
   @override
@@ -9,79 +10,184 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final ApiService _apiService = ApiService();
-  final TextEditingController _gameIdController = TextEditingController();
-  final TextEditingController _playerNameController = TextEditingController();
 
   Future<void> _createGame() async {
-    final playerName = _playerNameController.text;
-    if (playerName.isNotEmpty) {
-      final response = await _apiService.createGame(playerName);
-      if (response != null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Code de la partie : ${response['gameId']}'))
-        );
+    final playerName = await _showInputDialog(
+      title: 'Créer une partie',
+      hint: 'Entrez votre pseudo (max 10 caractères)',
+    );
 
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => LobbyScreen(
-              gameId: response['gameId']!,
-              playerName: playerName,
+    if (playerName != null && _validatePlayerName(playerName)) {
+      try {
+        final result = await _apiService.createGame(playerName);
+        if (result != null) {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => LobbyScreen(
+                gameId: result['gameId']!,
+                playerName: playerName,
+                isHost: true,
+              ),
             ),
-          ),
-        );
+          );
+        }
+      } catch (e) {
+        _showErrorDialog('Erreur lors de la création de la partie.');
       }
     }
   }
 
   Future<void> _joinGame() async {
-    final gameId = _gameIdController.text;
-    final playerName = _playerNameController.text;
-    if (gameId.isNotEmpty && playerName.isNotEmpty) {
-      final playerId = await _apiService.joinGame(gameId, playerName);
-      if (playerId != null) {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => LobbyScreen(
-              gameId: gameId,
-              playerName: playerName,
-            ),
-          ),
-        );
+    final gameId = await _showInputDialog(
+      title: 'Rejoindre une partie',
+      hint: 'Entrez le code de la partie',
+    );
+
+    if (gameId != null && gameId.isNotEmpty) {
+      final playerName = await _showInputDialog(
+        title: 'Pseudo',
+        hint: 'Entrez votre pseudo (max 10 caractères)',
+      );
+
+      if (playerName != null && _validatePlayerName(playerName)) {
+        try {
+          final result = await _apiService.joinGame(gameId, playerName);
+          if (result) {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => LobbyScreen(
+                  gameId: gameId,
+                  playerName: playerName,
+                  isHost: false,
+                ),
+              ),
+            );
+          }
+        } catch (e) {
+          _showErrorDialog('Erreur lors de la connexion à la partie.');
+        }
       }
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: Text('Page d\'accueil')),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            TextField(
-              controller: _playerNameController,
-              decoration: InputDecoration(labelText: 'Entrez votre pseudo'),
+  bool _validatePlayerName(String name) {
+    final regex = RegExp(r'^[a-zA-Z0-9\-]{1,10}$');
+    if (!regex.hasMatch(name)) {
+      _showErrorDialog(
+          'Pseudo invalide. Utilisez uniquement des lettres, chiffres ou "-".');
+      return false;
+    }
+    return true;
+  }
+
+  Future<String?> _showInputDialog(
+      {required String title, required String hint}) async {
+    final TextEditingController controller = TextEditingController();
+
+    return await showDialog<String>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: Text(title),
+          content: TextField(
+            controller: controller,
+            decoration: InputDecoration(hintText: hint),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text('Annuler'),
             ),
-            SizedBox(height: 20),
-            ElevatedButton(
-              onPressed: _createGame,
-              child: Text('Créer une partie'),
-            ),
-            SizedBox(height: 20),
-            TextField(
-              controller: _gameIdController,
-              decoration: InputDecoration(labelText: 'Code de la partie'),
-            ),
-            ElevatedButton(
-              onPressed: _joinGame,
-              child: Text('Rejoindre une partie'),
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context, controller.text.trim());
+              },
+              child: Text('Confirmer'),
             ),
           ],
-        ),
+        );
+      },
+    );
+  }
+
+  void _showErrorDialog(String message) {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: Text('Erreur'),
+          content: Text(message),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text('OK'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final screenHeight = MediaQuery.of(context).size.height;
+    final screenWidth = MediaQuery.of(context).size.width;
+
+    return Scaffold(
+      extendBodyBehindAppBar: true,
+      body: Stack(
+        children: [
+          // Fond commun
+          Container(
+            decoration: AppTheme.backgroundDecoration(),
+          ),
+          // Titre
+          Positioned(
+            top: screenHeight * 0.15,
+            left: screenWidth * 0.05,
+            right: screenWidth * 0.05,
+            child: Center(
+              child: Text(
+                'Funky Foxes',
+                style: Theme.of(context).textTheme.headline1,
+              ),
+            ),
+          ),
+          // Logo
+          Positioned(
+            top: screenHeight * 0.2,
+            left: 0,
+            right: 0,
+            child: Image.asset(
+              'assets/images/logo-renard.png',
+              height: screenHeight * 0.4,
+              width: screenWidth * 0.4,
+              fit: BoxFit.contain,
+            ),
+          ),
+          // Boutons
+          Positioned(
+            bottom: screenHeight * 0.15,
+            left: screenWidth * 0.1,
+            right: screenWidth * 0.1,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                AppTheme.customButton(
+                  label: 'Create a game',
+                  onPressed: _createGame,
+                ),
+                SizedBox(height: screenHeight * 0.03),
+                AppTheme.customButton(
+                  label: 'Join a game',
+                  onPressed: _joinGame,
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'styles/app_theme.dart';
 import 'screens/home_screen.dart';
 
 void main() {
@@ -9,10 +10,8 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Jeu en ligne',
-      theme: ThemeData(
-        primarySwatch: Colors.blue,
-      ),
+      title: 'Funky Foxes',
+      theme: AppTheme.themeData, // Appliquez le thème global
       home: HomeScreen(),
     );
   }

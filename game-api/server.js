@@ -2,62 +2,61 @@ require('dotenv').config();
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
-const redis = require('redis'); // Importation du client Redis
+const redisClient = require('./config/redis');
+const cors = require('cors');
 
 const app = express();
 const port = process.env.PORT || 3000;
 
-// Initialisation de Redis
-const redisClient = redis.createClient({
-  url: 'redis://localhost:6379' // Changez l'URL si votre configuration Redis est différente
-});
+// Middleware pour parser le JSON
+app.use(express.json());
+app.use(cors());
 
-// Connectez-vous à Redis
-redisClient.connect().catch(console.error);
-
-// Créez le serveur HTTP
+// Crée le serveur HTTP
 const server = http.createServer(app);
 
-// Configurez Socket.IO avec le serveur HTTP
+// Configure Socket.IO
 const io = new Server(server, {
   cors: {
-    origin: '*', // Changez cette valeur pour autoriser les domaines spécifiques
-    methods: ['GET', 'POST']
-  }
+    origin: '*', // Autorise toutes les origines
+    methods: ['GET', 'POST'],
+  },
 });
 
-app.use(express.json());
-
-app.get('/', (req, res) => {
-  res.send('API de jeu en Node.js est en ligne');
+// Middleware pour attacher io à req
+app.use((req, res, next) => {
+  req.io = io;
+  next();
 });
 
-const gameRoutes = require('./routes/gameRoutes')(io, redisClient);
+// Logger les requêtes
+app.use((req, res, next) => {
+  console.log(`Requête ${req.method} reçue sur ${req.url}`);
+  next();
+});
+
+// Importation des routes
+const gameRoutes = require('./routes/gameRoutes');
 const questionRoutes = require('./routes/questionRoutes');
+const { handleSocketEvents } = require('./controllers/gameController');
 
+// Utilisation des routes
 app.use('/api/game', gameRoutes);
-app.use('/api/question', questionRoutes);
+app.use('/api/question', questionRoutes); // Si vous avez des routes pour les questions
 
+// Gestion des connexions Socket.IO globales
 io.on('connection', (socket) => {
   console.log('Un joueur s\'est connecté');
 
-  socket.on('joinRoom', async (gameId) => {
-    socket.join(gameId);
-
-    try {
-      const players = JSON.parse(await redisClient.hGet(`game:${gameId}`, 'players')) || [];
-      io.to(gameId).emit('currentPlayers', players);
-    } catch (error) {
-      console.error('Erreur lors de la récupération des joueurs:', error);
-    }
-  });
+  // Appel de handleSocketEvents
+  handleSocketEvents(io, socket);
 
   socket.on('disconnect', () => {
     console.log('Un joueur s\'est déconnecté');
   });
 });
 
-// Démarrer le serveur
+// Démarre le serveur
 server.listen(port, () => {
   console.log(`Serveur démarré sur le port ${port}`);
 });
