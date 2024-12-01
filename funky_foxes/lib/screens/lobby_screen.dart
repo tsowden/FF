@@ -71,23 +71,25 @@ class _LobbyScreenState extends State<LobbyScreen> {
       if (widget.isHost) _showStartGameDialog();
     });
 
-    _gameService.socket.on('startGame', (_) {
-      print('LobbyScreen: Événement startGame reçu. Redirection vers GameScreen...');
-      try {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => GameScreen(
-              gameId: widget.gameId,
-              playerName: widget.playerName,
-              gameService: _gameService, // Correction : Ajout de gameService
-            ),
+  _gameService.socket.on('startGame', (data) {
+    print('LobbyScreen: Événement startGame reçu. Redirection vers GameScreen...');
+    try {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => GameScreen(
+            gameId: widget.gameId,
+            playerName: widget.playerName,
+            gameService: _gameService,
+            initialData: Map<String, dynamic>.from(data), // Pass the data
           ),
-        );
-      } catch (e) {
-        print('LobbyScreen: Erreur lors de la redirection vers GameScreen : $e');
-      }
-    });
+        ),
+      );
+    } catch (e) {
+      print('LobbyScreen: Erreur lors de la redirection vers GameScreen : $e');
+    }
+  });
+
 
     // Écoute des changements de joueur actif
     _gameService.onActivePlayerChanged((activePlayerName) {

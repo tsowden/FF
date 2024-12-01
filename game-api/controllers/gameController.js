@@ -1,5 +1,6 @@
 const { v4: uuidv4 } = require('uuid');
 const redisClient = require('../config/redis');
+const db = require('../config/db'); // Assurez-vous que le chemin est correct
 
 // Fonction pour générer un code de partie unique
 function generateGameId(length = 6) {
@@ -9,6 +10,20 @@ function generateGameId(length = 6) {
     result += characters.charAt(Math.floor(Math.random() * characters.length));
   }
   return result;
+}
+
+// Fonction pour récupérer une carte aléatoire
+function getRandomCard() {
+  return new Promise((resolve, reject) => {
+    db.query('SELECT * FROM cards ORDER BY RAND() LIMIT 1', (error, results) => {
+      if (error) {
+        console.error('Erreur lors de la récupération de la carte:', error);
+        reject(error);
+      } else {
+        resolve(results[0]); // Retourne la première (et seule) carte
+      }
+    });
+  });
 }
 
 const createGame = async (req, res) => {
@@ -102,7 +117,6 @@ const getActivePlayer = async (req, res) => {
   }
 };
 
-// Fonction pour changer le joueur actif
 const changeActivePlayer = async (gameId, io) => {
   try {
     const gameData = await redisClient.hGetAll(`game:${gameId}`);
@@ -113,21 +127,33 @@ const changeActivePlayer = async (gameId, io) => {
       (p) => p.playerId === gameData.activePlayerId
     );
 
-    // Passer au joueur suivant
+    // Move to the next player
     currentIndex = (currentIndex + 1) % players.length;
     const newActivePlayerId = players[currentIndex].playerId;
 
-    // Mettre à jour Redis
+    // Update Redis
     await redisClient.hSet(`game:${gameId}`, 'activePlayerId', newActivePlayerId);
 
-    // Notifier les joueurs
-    console.log(
-      `Backend: Joueur actif changé pour la partie ${gameId} : ${players[currentIndex].playerName}`
-    );
+    // Draw a random card
+    const card = await getRandomCard();
+
+    // Prepare card descriptions
+    const activePlayerName = players[currentIndex].playerName;
+    const cardDescriptionPassive = card.card_description_passif.replace('{activePlayerName}', activePlayerName);
+
+    // Emit the active player change along with the card data
     io.to(gameId).emit('activePlayerChanged', {
       activePlayerId: newActivePlayerId,
-      activePlayerName: players[currentIndex].playerName,
+      activePlayerName: activePlayerName,
+      cardDescription: card.card_description,
+      cardDescriptionPassive: cardDescriptionPassive,
+      cardImage: card.card_image,
+      cardName: card.card_name,
     });
+
+    console.log(
+      `Backend: Joueur actif changé pour la partie ${gameId} : ${activePlayerName}`
+    );
   } catch (error) {
     console.error('Backend: Erreur lors du changement de joueur actif:', error);
   }
@@ -183,7 +209,35 @@ const handleSocketEvents = (io, socket) => {
 
   socket.on('endTurn', async (gameId) => {
     console.log(`Backend: Fin du tour reçu pour la partie ${gameId}`);
-    await changeActivePlayer(gameId, io);
+
+    try {
+      // Récupérer une carte aléatoire
+      const card = await getRandomCard();
+
+      // Récupérer le nom du joueur actif avant de changer le joueur actif
+      const gameData = await redisClient.hGetAll(`game:${gameId}`);
+      const players = JSON.parse(gameData.players || '[]');
+      const activePlayerId = gameData.activePlayerId;
+      const activePlayer = players.find((p) => p.playerId === activePlayerId);
+      const activePlayerName = activePlayer ? activePlayer.playerName : 'Joueur inconnu';
+
+      // Remplacer le placeholder dans la description passive
+      const cardDescriptionPassive = card.card_description_passif.replace('{activePlayerName}', activePlayerName);
+
+      // Diffuser les descriptions à tous les clients
+      io.to(gameId).emit('cardDrawn', {
+        activePlayerName: activePlayerName,
+        cardDescription: card.card_description,
+        cardDescriptionPassive: cardDescriptionPassive,
+        cardImage: card.card_image, // Envoi du nom de l'image de la carte
+      });
+
+      // Changer le joueur actif
+      await changeActivePlayer(gameId, io);
+    } catch (error) {
+      console.error('Backend: Erreur lors de endTurn:', error);
+      // Gérer l'erreur de manière appropriée
+    }
   });
 
   socket.on('startGame', async ({ gameId }) => {
@@ -191,32 +245,48 @@ const handleSocketEvents = (io, socket) => {
     try {
       const gameData = await redisClient.hGetAll(`game:${gameId}`);
       const players = JSON.parse(gameData.players || '[]');
-
+  
       if (players.length === 0) {
         console.error(`Backend: Aucun joueur trouvé pour le jeu ${gameId}`);
         return;
       }
-
+  
       const firstPlayer = players[0];
+      const activePlayerName = firstPlayer.playerName;
+  
       await redisClient.hSet(
         `game:${gameId}`,
         'activePlayerId',
         firstPlayer.playerId
       );
-
-      console.log(
-        `Backend: Premier joueur actif défini : ${firstPlayer.playerName} (ID: ${firstPlayer.playerId})`
+  
+      // Draw a random card
+      const card = await getRandomCard();
+  
+      // Prepare card descriptions
+      const cardDescriptionPassive = card.card_description_passif.replace(
+        '{activePlayerName}',
+        activePlayerName
       );
-
-      io.to(gameId).emit('startGame', { activePlayerName: firstPlayer.playerName });
-      io.to(gameId).emit('activePlayerChanged', {
-        activePlayerId: firstPlayer.playerId,
-        activePlayerName: firstPlayer.playerName,
+  
+      // Emit the startGame event with the necessary data
+      io.to(gameId).emit('startGame', {
+        activePlayerName: activePlayerName,
+        cardDescription: card.card_description,
+        cardDescriptionPassive: cardDescriptionPassive,
+        cardImage: card.card_image,
+        cardName: card.card_name,
       });
+  
+      console.log(
+        `Backend: Premier joueur actif défini : ${activePlayerName} (ID: ${firstPlayer.playerId})`
+      );
     } catch (error) {
       console.error(`Backend: Erreur lors du démarrage du jeu pour ${gameId} :`, error);
     }
   });
+  
+  
 
   socket.on('getActivePlayer', async (gameId) => {
     console.log(`Backend: Reçu demande de getActivePlayer pour la partie ${gameId}`);
