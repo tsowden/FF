@@ -9,8 +9,9 @@ class LobbyScreen extends StatefulWidget {
   final String gameId;
   final String playerName;
   final bool isHost;
+  final String playerId; // Ajout du playerId
 
-  LobbyScreen({required this.gameId, required this.playerName, this.isHost = false});
+  LobbyScreen({required this.gameId, required this.playerId, required this.playerName, this.isHost = false});
 
   @override
   _LobbyScreenState createState() => _LobbyScreenState();
@@ -20,6 +21,7 @@ class _LobbyScreenState extends State<LobbyScreen> {
   late final GameService _gameService;
   final ImagePicker _imagePicker = ImagePicker();
   File? _playerImage;
+  String? playerId; // Stockage du playerId
   List<String> players = [];
   Map<String, bool> readyStatus = {};
   int readyCount = 0;
@@ -35,7 +37,26 @@ class _LobbyScreenState extends State<LobbyScreen> {
     // Connexion au jeu via Socket.IO
     _gameService.connectToGame(widget.gameId);
 
+    // Récupérer le playerId
+    _fetchPlayerId();
+
     // Écoute des événements
+    _setupSocketListeners();
+  }
+
+  void _fetchPlayerId() async {
+    try {
+      final fetchedPlayerId = await _gameService.getPlayerId(widget.gameId, widget.playerName);
+      setState(() {
+        playerId = fetchedPlayerId;
+      });
+      print('LobbyScreen: playerId récupéré : $playerId');
+    } catch (e) {
+      print('LobbyScreen: Erreur lors de la récupération du playerId : $e');
+    }
+  }
+
+  void _setupSocketListeners() {
     _gameService.socket.on('currentPlayers', (data) {
       print('LobbyScreen: Événement currentPlayers reçu: $data');
       setState(() {
@@ -71,32 +92,30 @@ class _LobbyScreenState extends State<LobbyScreen> {
       if (widget.isHost) _showStartGameDialog();
     });
 
-  _gameService.socket.on('startGame', (data) {
-    print('LobbyScreen: Événement startGame reçu. Redirection vers GameScreen...');
-    try {
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => GameScreen(
-            gameId: widget.gameId,
-            playerName: widget.playerName,
-            gameService: _gameService,
-            initialData: Map<String, dynamic>.from(data), // Pass the data
+    _gameService.socket.on('startGame', (data) {
+      print('LobbyScreen: Événement startGame reçu. Redirection vers GameScreen...');
+      try {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => GameScreen(
+              gameId: widget.gameId,
+              playerName: widget.playerName,
+              playerId: widget.playerId, 
+              gameService: _gameService,
+              initialData: Map<String, dynamic>.from(data),
+            ),
           ),
-        ),
-      );
-    } catch (e) {
-      print('LobbyScreen: Erreur lors de la redirection vers GameScreen : $e');
-    }
-  });
+        );
+      } catch (e) {
+        print('LobbyScreen: Erreur lors de la redirection vers GameScreen : $e');
+      }
+    });
 
-
-    // Écoute des changements de joueur actif
     _gameService.onActivePlayerChanged((activePlayerName) {
       print('LobbyScreen: Joueur actif changé : $activePlayerName');
     });
 
-    // Rejoindre la salle
     _gameService.joinRoom(widget.gameId);
   }
 
@@ -161,17 +180,14 @@ class _LobbyScreenState extends State<LobbyScreen> {
     return Scaffold(
       body: Stack(
         children: [
-          // Fond
           Container(
             decoration: AppTheme.backgroundDecoration(),
           ),
-          // Contenu
           Padding(
             padding: const EdgeInsets.all(16.0),
             child: Column(
               children: [
                 SizedBox(height: screenHeight * 0.05),
-                // Code de la partie
                 Text(
                   'Game code:',
                   style: Theme.of(context).textTheme.bodyText1?.copyWith(
@@ -187,7 +203,6 @@ class _LobbyScreenState extends State<LobbyScreen> {
                       ),
                 ),
                 SizedBox(height: screenHeight * 0.03),
-                // Cercle contenant l'image ou l'icône
                 GestureDetector(
                   onTap: _takePhoto,
                   child: Container(
@@ -196,17 +211,7 @@ class _LobbyScreenState extends State<LobbyScreen> {
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       color: AppTheme.lightMint,
-                      border: Border.all(
-                        color: AppTheme.greenButton,
-                        width: 2,
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.2),
-                          blurRadius: 6,
-                          offset: Offset(2, 2),
-                        ),
-                      ],
+                      border: Border.all(color: AppTheme.greenButton, width: 2),
                       image: _playerImage != null
                           ? DecorationImage(
                               image: FileImage(_playerImage!),
@@ -224,19 +229,11 @@ class _LobbyScreenState extends State<LobbyScreen> {
                   ),
                 ),
                 SizedBox(height: screenHeight * 0.02),
-                // Pseudo du joueur
                 Container(
                   padding: EdgeInsets.all(12),
                   decoration: BoxDecoration(
                     color: AppTheme.lightMint,
                     borderRadius: BorderRadius.circular(20),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.2),
-                        blurRadius: 6,
-                        offset: Offset(2, 2),
-                      ),
-                    ],
                   ),
                   child: Text(
                     widget.playerName,
@@ -250,15 +247,11 @@ class _LobbyScreenState extends State<LobbyScreen> {
                   ),
                 ),
                 SizedBox(height: screenHeight * 0.03),
-                // Nombre de joueurs prêts
                 Text(
                   'Players ready: $readyCount/${players.length}',
-                  style: Theme.of(context).textTheme.bodyText1?.copyWith(
-                        fontSize: 18,
-                      ),
+                  style: Theme.of(context).textTheme.bodyText1?.copyWith(fontSize: 18),
                 ),
                 SizedBox(height: screenHeight * 0.03),
-                // Liste des joueurs
                 Expanded(
                   child: Container(
                     decoration: BoxDecoration(
@@ -296,7 +289,6 @@ class _LobbyScreenState extends State<LobbyScreen> {
                   ),
                 ),
                 SizedBox(height: screenHeight * 0.03),
-                // Bouton "Ready"
                 AppTheme.customButton(
                   label: isReady ? "Unready" : "Ready!",
                   onPressed: () => _toggleReadyStatus(!isReady),

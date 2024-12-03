@@ -1,6 +1,8 @@
 const { v4: uuidv4 } = require('uuid');
 const redisClient = require('../config/redis');
-const db = require('../config/db'); // Assurez-vous que le chemin est correct
+const db = require('../config/db');
+const mapData = require('../models/map');
+
 
 // Fonction pour générer un code de partie unique
 function generateGameId(length = 6) {
@@ -36,12 +38,25 @@ const createGame = async (req, res) => {
     } while (await redisClient.exists(`game:${gameId}`));
 
     const playerId = uuidv4();
+
+    // Position & orientation de départ
+    const startingPosition = { x: 7, y: 8};
+    const startingOrientation = 'north';
+
     const gameData = {
       players: JSON.stringify([
-        { playerId, playerName, ready: false, isHost: true },
+        {
+          playerId,
+          playerName,
+          ready: false,
+          isHost: true,
+          position: startingPosition,
+          orientation: startingOrientation,
+        },
       ]),
       activePlayerId: playerId,
       status: 'waiting',
+      maze: JSON.stringify(mapData),
     };
 
     await redisClient.hSet(
@@ -51,7 +66,9 @@ const createGame = async (req, res) => {
       'activePlayerId',
       gameData.activePlayerId,
       'status',
-      gameData.status
+      gameData.status,
+      'maze',
+      gameData.maze
     );
 
     console.log(`Backend: Partie créée avec gameId ${gameId} et playerId ${playerId}`);
@@ -79,7 +96,24 @@ const joinGame = async (req, res) => {
     const playerId = uuidv4();
     const gameData = await redisClient.hGetAll(`game:${gameId}`);
     const players = JSON.parse(gameData.players || '[]');
-    players.push({ playerId, playerName, ready: false });
+
+    // Assignez des positions de départ basées sur le nombre de joueurs
+    const startingPositions = [
+      { x: 2, y: 0, orientation: 'south' },
+      { x: 0, y: 8, orientation: 'east' },
+      // Ajoutez plus de positions de départ si nécessaire
+    ];
+    const positionIndex = players.length % startingPositions.length;
+    const startingPosition = startingPositions[positionIndex];
+
+    players.push({
+      playerId,
+      playerName,
+      ready: false,
+      isHost: false,
+      position: { x: startingPosition.x, y: startingPosition.y },
+      orientation: startingPosition.orientation,
+    });
 
     await redisClient.hSet(`game:${gameId}`, 'players', JSON.stringify(players));
     if (!res.headersSent) {
@@ -120,44 +154,202 @@ const getActivePlayer = async (req, res) => {
 const changeActivePlayer = async (gameId, io) => {
   try {
     const gameData = await redisClient.hGetAll(`game:${gameId}`);
-    if (!gameData) return;
+    if (!gameData) {
+      console.error(`Backend: Game ${gameId} introuvable dans Redis.`);
+      return;
+    }
 
     const players = JSON.parse(gameData.players || '[]');
     let currentIndex = players.findIndex(
       (p) => p.playerId === gameData.activePlayerId
     );
 
-    // Move to the next player
+    if (currentIndex === -1) {
+      console.error(`Backend: Joueur actif introuvable pour la partie ${gameId}.`);
+      return;
+    }
+
+    // Passer au joueur suivant
     currentIndex = (currentIndex + 1) % players.length;
-    const newActivePlayerId = players[currentIndex].playerId;
+    const newActivePlayer = players[currentIndex];
 
-    // Update Redis
-    await redisClient.hSet(`game:${gameId}`, 'activePlayerId', newActivePlayerId);
+    // Mettre à jour Redis avec le nouveau joueur actif
+    await redisClient.hSet(`game:${gameId}`, 'activePlayerId', newActivePlayer.playerId);
 
-    // Draw a random card
+    // Convertir la position en format alphanumérique
+    const { x, y } = newActivePlayer.position;
+    const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    const formattedPosition = `${alphabet[x]}${y + 1}`; // Convertir x en lettre et y en coordonnée humaine
+
+    console.log(
+      `Backend: Nouveau joueur actif pour la partie ${gameId} : ${newActivePlayer.playerName}, Position : ${formattedPosition}`
+    );
+
+    // Récupérer une carte aléatoire
     const card = await getRandomCard();
 
-    // Prepare card descriptions
-    const activePlayerName = players[currentIndex].playerName;
-    const cardDescriptionPassive = card.card_description_passif.replace('{activePlayerName}', activePlayerName);
+    // Préparer les descriptions des cartes
+    const cardDescriptionPassive = card.card_description_passif.replace(
+      '{activePlayerName}',
+      newActivePlayer.playerName
+    );
 
-    // Emit the active player change along with the card data
+    // Diffuser les données du joueur actif et de la carte à tous les clients
     io.to(gameId).emit('activePlayerChanged', {
-      activePlayerId: newActivePlayerId,
-      activePlayerName: activePlayerName,
+      activePlayerId: newActivePlayer.playerId,
+      activePlayerName: newActivePlayer.playerName,
       cardDescription: card.card_description,
       cardDescriptionPassive: cardDescriptionPassive,
       cardImage: card.card_image,
       cardName: card.card_name,
+      position: formattedPosition, // Inclure la position formatée
     });
-
-    console.log(
-      `Backend: Joueur actif changé pour la partie ${gameId} : ${activePlayerName}`
-    );
   } catch (error) {
     console.error('Backend: Erreur lors du changement de joueur actif:', error);
   }
 };
+
+
+// Fonction pour avoir une position plus claire de type A1, J10 etc
+function getPositionLabel(x, y) {
+  const letters = 'ABCDEFGHIJKLMNOP'; 
+  return `${letters[x] || '?'}${y + 1}`;
+}
+
+
+function processPlayerMove(player, move, maze) {
+  let { x, y } = player.position;
+  let orientation = player.orientation;
+
+  const orientations = ['north', 'east', 'south', 'west'];
+  const idx = orientations.indexOf(orientation);
+
+  const movementOffsets = {
+    'north': { dx: 0, dy: -1 },
+    'east': { dx: 1, dy: 0 },
+    'south': { dx: 0, dy: 1 },
+    'west': { dx: -1, dy: 0 },
+  };
+
+  if (move === 'forward') {
+    const offset = movementOffsets[orientation];
+    const newX = x + offset.dx;
+    const newY = y + offset.dy;
+
+    if (
+      newY >= 0 &&
+      newY < maze.length &&
+      newX >= 0 &&
+      newX < maze[0].length &&
+      maze[newY][newX].accessible
+    ) {
+      player.position = { x: newX, y: newY };
+      const newPositionLabel = getPositionLabel(newX, newY);
+      console.log(`Backend: Player moved forward to position ${newPositionLabel} (${newX}, ${newY}), orientation: ${orientation}`);
+      return { success: true };
+    } else {
+      return { success: false, message: 'Impossible d\'avancer; chemin bloqué' };
+    }
+  } else if (move === 'left' || move === 'right') {
+    let newIdx = idx;
+    if (move === 'left') {
+      newIdx = (idx + 3) % 4; // Tourner à gauche
+    } else if (move === 'right') {
+      newIdx = (idx + 1) % 4; // Tourner à droite
+    }
+    const newOrientation = orientations[newIdx];
+    const offset = movementOffsets[newOrientation];
+    const newX = x + offset.dx;
+    const newY = y + offset.dy;
+
+    if (
+      newY >= 0 &&
+      newY < maze.length &&
+      newX >= 0 &&
+      newX < maze[0].length &&
+      maze[newY][newX].accessible
+    ) {
+      player.position = { x: newX, y: newY };
+      player.orientation = newOrientation;
+      const newPositionLabel = getPositionLabel(newX, newY);
+      console.log(`Backend: Player turned ${move} and moved to position ${newPositionLabel} (${newX}, ${newY}), orientation: ${newOrientation}`);
+      return { success: true };
+    } else {
+      return { success: false, message: `Impossible de tourner à ${move === 'left' ? 'gauche' : 'droite'}; chemin bloqué` };
+    }
+  } else {
+    return { success: false, message: 'Mouvement invalide' };
+  }
+}
+
+
+
+function getValidMoves(player, maze) {
+  const { x, y } = player.position;
+  const orientation = player.orientation;
+
+  const orientations = ['north', 'east', 'south', 'west'];
+  const idx = orientations.indexOf(orientation);
+
+  const movementOffsets = {
+    'north': { dx: 0, dy: -1 },
+    'east': { dx: 1, dy: 0 },
+    'south': { dx: 0, dy: 1 },
+    'west': { dx: -1, dy: 0 },
+  };
+
+  // Fonction pour calculer les mouvements gauche et droite
+  function getTurnMove(direction) {
+    let newIdx = idx;
+    if (direction === 'left') {
+      newIdx = (idx + 3) % 4; // Tourner à gauche
+    } else if (direction === 'right') {
+      newIdx = (idx + 1) % 4; // Tourner à droite
+    }
+    const newOrientation = orientations[newIdx];
+    const offset = movementOffsets[newOrientation];
+    return { x: x + offset.dx, y: y + offset.dy };
+  }
+
+  // Calcul des positions potentielles
+  const forward = {
+    x: x + movementOffsets[orientation].dx,
+    y: y + movementOffsets[orientation].dy,
+  };
+  const left = getTurnMove('left');
+  const right = getTurnMove('right');
+
+  // Vérification de l'accessibilité des positions
+  const canMoveForward = isAccessible(forward, maze);
+  const canMoveLeft = isAccessible(left, maze);
+  const canMoveRight = isAccessible(right, maze);
+
+  console.log(`Backend: Valid moves: { canMoveForward: ${canMoveForward}, canMoveLeft: ${canMoveLeft}, canMoveRight: ${canMoveRight} }`);
+
+  return {
+    canMoveForward,
+    canMoveLeft,
+    canMoveRight,
+  };
+}
+
+function isAccessible(position, maze) {
+  const { x, y } = position;
+  if (
+    y >= 0 &&
+    y < maze.length &&
+    x >= 0 &&
+    x < maze[0].length
+  ) {
+    const accessible = maze[y][x].accessible;
+    console.log(`Backend: Position x=${x}, y=${y} is ${accessible ? 'accessible' : 'blocked'}`);
+    return accessible;
+  }
+  console.log(`Backend: Position x=${x}, y=${y} is out of bounds`);
+  return false;
+}
+
+
 
 // Gestion des événements Socket.IO
 const handleSocketEvents = (io, socket) => {
@@ -244,6 +436,7 @@ const handleSocketEvents = (io, socket) => {
     console.log(`Backend: Demande de démarrage du jeu pour la partie ${gameId}`);
     try {
       const gameData = await redisClient.hGetAll(`game:${gameId}`);
+      const maze = JSON.parse(gameData.maze || '[]');
       const players = JSON.parse(gameData.players || '[]');
   
       if (players.length === 0) {
@@ -271,6 +464,8 @@ const handleSocketEvents = (io, socket) => {
   
       // Emit the startGame event with the necessary data
       io.to(gameId).emit('startGame', {
+        maze: maze,
+        players: players,
         activePlayerName: activePlayerName,
         cardDescription: card.card_description,
         cardDescriptionPassive: cardDescriptionPassive,
@@ -316,6 +511,84 @@ const handleSocketEvents = (io, socket) => {
       socket.emit('activePlayer', { activePlayerName: null });
     }
   });
+
+  socket.on('playerMove', async ({ gameId, playerId, move }) => {
+    console.log(`Backend: Player ${playerId} is attempting to move ${move} in game ${gameId}`);
+    
+    try {
+      const gameData = await redisClient.hGetAll(`game:${gameId}`);
+      const players = JSON.parse(gameData.players || '[]');
+      const player = players.find((p) => p.playerId === playerId);
+  
+      if (!player) {
+        console.error(`Backend: Player with ID ${playerId} not found in game ${gameId}.`);
+        socket.emit('moveError', { message: 'Player not found' });
+        return;
+      }
+  
+      // Load the maze directly from the module
+      const maze = require('../models/map');
+  
+      const validMoves = getValidMoves(player, maze);
+      console.log(`Backend: Valid moves for player ${playerId}:`, validMoves);
+  
+      // Check if the move is valid before proceeding
+      if (
+        (move === 'forward' && !validMoves.canMoveForward) ||
+        (move === 'left' && !validMoves.canMoveLeft) ||
+        (move === 'right' && !validMoves.canMoveRight)
+      ) {
+        socket.emit('moveError', { message: 'Invalid move' });
+        return;
+      }
+  
+      // Process the player's move
+      const result = processPlayerMove(player, move, maze);
+  
+      if (result.success) {
+        // Update the players data in Redis
+        await redisClient.hSet(`game:${gameId}`, 'players', JSON.stringify(players));
+  
+        // Emit position update to all clients in the game
+        io.to(gameId).emit('positionUpdate', {
+          playerId,
+          position: player.position,
+          orientation: player.orientation,
+        });
+      } else {
+        socket.emit('moveError', { message: result.message });
+      }
+    } catch (error) {
+      console.error('Backend: Error processing player move:', error);
+      socket.emit('moveError', { message: 'Error processing move' });
+    }
+  });
+  
+  socket.on('getValidMoves', async ({ gameId, playerId }) => {
+    try {
+      const gameData = await redisClient.hGetAll(`game:${gameId}`);
+      const players = JSON.parse(gameData.players || '[]');
+      const player = players.find((p) => p.playerId === playerId);
+  
+      if (!player) {
+        socket.emit('validMoves', { error: 'Player not found' });
+        return;
+      }
+  
+      // Load the maze directly from the module
+      const maze = require('../models/map');
+  
+      const validMoves = getValidMoves(player, maze);
+  
+      console.log(`Backend: Valid moves for player ${playerId}:`, validMoves);
+  
+      socket.emit('validMoves', validMoves);
+    } catch (error) {
+      console.error('Backend: Error getting valid moves:', error);
+      socket.emit('validMoves', { error: 'Error getting valid moves' });
+    }
+  });
+  
 
   socket.on('disconnect', () => {
     console.log('Backend: Socket.IO: Un joueur s\'est déconnecté');

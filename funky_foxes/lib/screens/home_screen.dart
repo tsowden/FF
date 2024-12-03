@@ -20,17 +20,21 @@ class _HomeScreenState extends State<HomeScreen> {
     if (playerName != null && _validatePlayerName(playerName)) {
       try {
         final result = await _apiService.createGame(playerName);
-        if (result != null) {
+
+        if (result != null && result is Map<String, dynamic>) {
           Navigator.push(
             context,
             MaterialPageRoute(
               builder: (context) => LobbyScreen(
                 gameId: result['gameId']!,
+                playerId: result['playerId']!, // Récupération de playerId
                 playerName: playerName,
                 isHost: true,
               ),
             ),
           );
+        } else {
+          _showErrorDialog('Erreur lors de la création de la partie.');
         }
       } catch (e) {
         _showErrorDialog('Erreur lors de la création de la partie.');
@@ -53,17 +57,21 @@ class _HomeScreenState extends State<HomeScreen> {
       if (playerName != null && _validatePlayerName(playerName)) {
         try {
           final result = await _apiService.joinGame(gameId, playerName);
-          if (result) {
+
+          if (result != null && result is Map<String, dynamic>) {
             Navigator.push(
               context,
               MaterialPageRoute(
                 builder: (context) => LobbyScreen(
                   gameId: gameId,
+                  playerId: result['playerId']!, // Récupération de playerId
                   playerName: playerName,
                   isHost: false,
                 ),
               ),
             );
+          } else {
+            _showErrorDialog('Erreur lors de la connexion à la partie.');
           }
         } catch (e) {
           _showErrorDialog('Erreur lors de la connexion à la partie.');
@@ -72,15 +80,6 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  bool _validatePlayerName(String name) {
-    final regex = RegExp(r'^[a-zA-Z0-9\-]{1,10}$');
-    if (!regex.hasMatch(name)) {
-      _showErrorDialog(
-          'Pseudo invalide. Utilisez uniquement des lettres, chiffres ou "-".');
-      return false;
-    }
-    return true;
-  }
 
   Future<String?> _showInputDialog(
       {required String title, required String hint}) async {
@@ -128,6 +127,16 @@ class _HomeScreenState extends State<HomeScreen> {
         );
       },
     );
+  }
+
+  bool _validatePlayerName(String name) {
+    final regex = RegExp(r'^[a-zA-Z0-9\-]{1,10}$');
+    if (!regex.hasMatch(name)) {
+      _showErrorDialog(
+          'Pseudo invalide. Utilisez uniquement des lettres, chiffres ou "-".');
+      return false;
+    }
+    return true;
   }
 
   @override
