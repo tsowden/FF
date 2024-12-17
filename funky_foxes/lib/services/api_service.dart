@@ -2,66 +2,77 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 class ApiService {
-  static const String _baseUrl = 'http://192.168.0.53:3000/api/game';
+  static const String baseUrl = 'http://192.168.0.53:3000';
 
-  /// Crée une nouvelle partie en envoyant le `playerName` au serveur
-  Future<Map<String, dynamic>?> createGame(String playerName) async {
-    final url = Uri.parse('$_baseUrl/create-game');
-    print('Envoi de la requête POST à $url avec le nom du joueur : $playerName');
+  /// Créer une partie
+  Future<Map<String, String>?> createGame(String playerName) async {
+    print('ApiService.createGame($playerName) -> POST $baseUrl/api/game/create-game');
+    
+    final url = Uri.parse('$baseUrl/api/game/create-game'); // Changement ici
+    final body = jsonEncode({'playerName': playerName});
 
     try {
       final response = await http.post(
         url,
-        headers: {'Content-Type': 'application/json'},
-        body: json.encode({'playerName': playerName}),
+        headers: {"Content-Type": "application/json"},
+        body: body,
       );
 
+      print('ApiService.createGame: response.statusCode=${response.statusCode}');
+      print('ApiService.createGame: response.body=${response.body}');
+
       if (response.statusCode == 200) {
-        final responseBody = json.decode(response.body);
-        if (responseBody is Map<String, dynamic>) {
-          print('Réponse du serveur pour createGame : $responseBody');
-          return responseBody;
+        final data = jsonDecode(response.body);
+        if (data != null && data['gameId'] != null && data['playerId'] != null) {
+          return {
+            'gameId': data['gameId'],
+            'playerId': data['playerId'],
+          };
         } else {
-          print('Erreur : Réponse inattendue du serveur pour createGame.');
+          print('ApiService.createGame: Réponse invalide: $data');
           return null;
         }
       } else {
-        print('Erreur HTTP (${response.statusCode}) : ${response.body}');
+        print('ApiService.createGame: Erreur statusCode=${response.statusCode}');
         return null;
       }
     } catch (e) {
-      print('Exception lors de la requête createGame : $e');
+      print('ApiService.createGame: Exception: $e');
       return null;
     }
   }
 
-  /// Rejoint une partie existante avec le `gameId` et le `playerName`
-  Future<Map<String, dynamic>?> joinGame(String gameId, String playerName) async {
-    final url = Uri.parse('$_baseUrl/join-game');
-    print('Envoi de la requête POST à $url avec gameId: $gameId et playerName: $playerName');
+  /// Rejoindre une partie
+  Future<Map<String, String>?> joinGame(String gameId, String playerName) async {
+    print('ApiService.joinGame(gameId=$gameId, playerName=$playerName) -> POST $baseUrl/api/game/join-game');
+    
+    final url = Uri.parse('$baseUrl/api/game/join-game'); // Changement ici
+    final body = jsonEncode({'gameId': gameId, 'playerName': playerName});
 
     try {
       final response = await http.post(
         url,
-        headers: {'Content-Type': 'application/json'},
-        body: json.encode({'gameId': gameId, 'playerName': playerName}),
+        headers: {"Content-Type": "application/json"},
+        body: body,
       );
 
+      print('ApiService.joinGame: response.statusCode=${response.statusCode}');
+      print('ApiService.joinGame: response.body=${response.body}');
+
       if (response.statusCode == 200) {
-        final responseBody = json.decode(response.body);
-        if (responseBody is Map<String, dynamic>) {
-          print('Réponse du serveur pour joinGame : $responseBody');
-          return responseBody;
+        final data = jsonDecode(response.body);
+        if (data != null && data['playerId'] != null) {
+          return {'playerId': data['playerId']};
         } else {
-          print('Erreur : Réponse inattendue du serveur pour joinGame.');
+          print('ApiService.joinGame: Réponse invalide: $data');
           return null;
         }
       } else {
-        print('Erreur HTTP (${response.statusCode}) : ${response.body}');
+        print('ApiService.joinGame: Erreur statusCode=${response.statusCode}');
         return null;
       }
     } catch (e) {
-      print('Exception lors de la requête joinGame : $e');
+      print('ApiService.joinGame: Exception: $e');
       return null;
     }
   }

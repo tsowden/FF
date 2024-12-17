@@ -148,18 +148,18 @@ class _LobbyScreenState extends State<LobbyScreen> {
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
-          title: Text("Tous les joueurs sont prêts"),
-          content: Text("Voulez-vous lancer la partie ?"),
+          title: Text("All players are ready"),
+          content: Text("Do you want to start the game?"),
           actions: [
             TextButton(
-              child: Text("Non"),
+              child: Text("No"),
               onPressed: () {
                 print('LobbyScreen: Démarrage de la partie annulé par l\'hôte');
                 Navigator.of(context).pop();
               },
             ),
             TextButton(
-              child: Text("Oui"),
+              child: Text("Yes"),
               onPressed: () {
                 print('LobbyScreen: L\'hôte a choisi de démarrer la partie');
                 _gameService.startGame(widget.gameId);

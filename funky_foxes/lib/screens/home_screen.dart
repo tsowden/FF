@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import '../styles/app_theme.dart';
-import 'lobby_screen.dart'; // Assurez-vous que le chemin est correct
+import 'lobby_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   @override
@@ -12,77 +12,96 @@ class _HomeScreenState extends State<HomeScreen> {
   final ApiService _apiService = ApiService();
 
   Future<void> _createGame() async {
+    print('HomeScreen: Bouton "Create a game" cliqué');
+
     final playerName = await _showInputDialog(
-      title: 'Créer une partie',
-      hint: 'Entrez votre pseudo (max 10 caractères)',
+      title: 'Create a game',
+      hint: 'Enter your name (max 10 letters)',
     );
+
+    print('HomeScreen: playerName saisi pour "Create game" = $playerName');
 
     if (playerName != null && _validatePlayerName(playerName)) {
       try {
+        print('HomeScreen: Appel API createGame(playerName=$playerName)');
         final result = await _apiService.createGame(playerName);
 
-        if (result != null && result is Map<String, dynamic>) {
+        if (result != null) {
+          print('HomeScreen: createGame OK -> gameId=${result['gameId']}, playerId=${result['playerId']}');
           Navigator.push(
             context,
             MaterialPageRoute(
               builder: (context) => LobbyScreen(
                 gameId: result['gameId']!,
-                playerId: result['playerId']!, // Récupération de playerId
+                playerId: result['playerId']!,
                 playerName: playerName,
                 isHost: true,
               ),
             ),
           );
         } else {
+          print('HomeScreen: createGame renvoie null, erreur ?');
           _showErrorDialog('Erreur lors de la création de la partie.');
         }
       } catch (e) {
+        print('HomeScreen: Exception lors de la création de la partie : $e');
         _showErrorDialog('Erreur lors de la création de la partie.');
       }
     }
   }
 
   Future<void> _joinGame() async {
+    print('HomeScreen: Bouton "Join a game" cliqué');
+
     final gameId = await _showInputDialog(
-      title: 'Rejoindre une partie',
-      hint: 'Entrez le code de la partie',
+      title: 'Join a game',
+      hint: 'Enter the game code',
     );
+
+    print('HomeScreen: gameId saisi pour "Join game" = $gameId');
 
     if (gameId != null && gameId.isNotEmpty) {
       final playerName = await _showInputDialog(
-        title: 'Pseudo',
-        hint: 'Entrez votre pseudo (max 10 caractères)',
+        title: 'Name',
+        hint: 'Enter your name (max 10 letters)',
       );
+
+      print('HomeScreen: playerName saisi pour "Join game" = $playerName');
 
       if (playerName != null && _validatePlayerName(playerName)) {
         try {
+          print('HomeScreen: Appel API joinGame(gameId=$gameId, playerName=$playerName)');
           final result = await _apiService.joinGame(gameId, playerName);
 
-          if (result != null && result is Map<String, dynamic>) {
+          if (result != null) {
+            print('HomeScreen: joinGame OK -> playerId=${result['playerId']}');
             Navigator.push(
               context,
               MaterialPageRoute(
                 builder: (context) => LobbyScreen(
                   gameId: gameId,
-                  playerId: result['playerId']!, // Récupération de playerId
+                  playerId: result['playerId']!,
                   playerName: playerName,
                   isHost: false,
                 ),
               ),
             );
           } else {
+            print('HomeScreen: joinGame renvoie null, erreur ?');
             _showErrorDialog('Erreur lors de la connexion à la partie.');
           }
         } catch (e) {
+          print('HomeScreen: Exception lors de la connexion à la partie : $e');
           _showErrorDialog('Erreur lors de la connexion à la partie.');
         }
       }
     }
   }
 
-
-  Future<String?> _showInputDialog(
-      {required String title, required String hint}) async {
+  Future<String?> _showInputDialog({
+    required String title,
+    required String hint,
+  }) async {
     final TextEditingController controller = TextEditingController();
 
     return await showDialog<String>(
@@ -97,13 +116,13 @@ class _HomeScreenState extends State<HomeScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: Text('Annuler'),
+              child: Text('Cancel'),
             ),
             TextButton(
               onPressed: () {
                 Navigator.pop(context, controller.text.trim());
               },
-              child: Text('Confirmer'),
+              child: Text('Confirm'),
             ),
           ],
         );
@@ -116,7 +135,7 @@ class _HomeScreenState extends State<HomeScreen> {
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: Text('Erreur'),
+          title: Text('Error'),
           content: Text(message),
           actions: [
             TextButton(
@@ -133,7 +152,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final regex = RegExp(r'^[a-zA-Z0-9\-]{1,10}$');
     if (!regex.hasMatch(name)) {
       _showErrorDialog(
-          'Pseudo invalide. Utilisez uniquement des lettres, chiffres ou "-".');
+          'Invalid nickname. Use only letters, digits, or "-".');
       return false;
     }
     return true;
