@@ -152,36 +152,38 @@ class QuizCardHandler extends GenericCardHandler {
 
   async endQuiz() {
     try {
-      console.log('QuizCardHandler: Ending quiz...');
-      const quizStateJson = await redisClient.hGet(`game:${this.gameId}`, 'quizState');
-      const quizState = JSON.parse(quizStateJson || '{}');
+        console.log('QuizCardHandler: Ending quiz...');
+        const quizStateJson = await redisClient.hGet(`game:${this.gameId}`, 'quizState');
+        const quizState = JSON.parse(quizStateJson || '{}');
 
-      await redisClient.hSet(`game:${this.gameId}`, 'turnState', 'quizResult');
+        await redisClient.hSet(`game:${this.gameId}`, 'turnState', 'quizResult');
 
-      // Mise à jour du joueur actif dans Redis
-      const gameData = await redisClient.hGetAll(`game:${this.gameId}`);
-      const players = JSON.parse(gameData.players || '[]');
-      const activePlayer = players.find((p) => p.playerId === gameData.activePlayerId);
+        // Mise à jour du joueur actif dans Redis
+        const gameData = await redisClient.hGetAll(`game:${this.gameId}`);
+        const players = JSON.parse(gameData.players || '[]');
+        const activePlayer = players.find((p) => p.playerId === gameData.activePlayerId);
 
-      if (activePlayer) {
-        // Ajout de l'ensemble des berries gagnés
-        activePlayer.berries = (activePlayer.berries || 0) + quizState.earnedBerries;
-        await redisClient.hSet(`game:${this.gameId}`, 'players', JSON.stringify(players));
+        if (activePlayer) {
+            // Ajout des berries gagnés uniquement au joueur actif
+            activePlayer.berries = (activePlayer.berries || 0) + quizState.earnedBerries;
+            await redisClient.hSet(`game:${this.gameId}`, 'players', JSON.stringify(players));
 
-        console.log(`QuizCardHandler: ${activePlayer.playerName} earned ${quizState.earnedBerries} berries.`);
-      }
+            console.log(`QuizCardHandler: ${activePlayer.playerName} earned ${quizState.earnedBerries} berries.`);
+        }
 
-      // Émettre "quizEnd" => front affichera le récap final + bouton "End the turn"
-      this.io.to(this.gameId).emit('quizEnd', {
-        correctAnswers: quizState.correctAnswers,
-        totalQuestions: quizState.questions.length,
-        earnedBerries: quizState.earnedBerries,
-      });
+        // Émettre "quizEnd" avec les données du joueur actif
+        this.io.to(this.gameId).emit('quizEnd', {
+            playerId: activePlayer?.playerId,
+            correctAnswers: quizState.correctAnswers,
+            totalQuestions: quizState.questions.length,
+            earnedBerries: quizState.earnedBerries,
+        });
 
     } catch (error) {
-      console.error('QuizCardHandler: Error ending quiz:', error);
+        console.error('QuizCardHandler: Error ending quiz:', error);
     }
   }
+
 }
 
 module.exports = QuizCardHandler;

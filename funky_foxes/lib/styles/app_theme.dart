@@ -8,6 +8,9 @@ class AppTheme {
   static const Color lightMint = Color.fromARGB(255, 211, 248, 228);
   static const Color orangeTitle = Color.fromARGB(255, 240, 110, 10);
   static const Color white = Colors.white;
+  static const Color correctGreen = Color(0xFF8BDD8E); 
+  static const Color incorrectRed = Color(0xFFF28080);
+
 
   // Image de fond par défaut
   static const String backgroundImage = 'assets/images/fond2.png';
@@ -102,11 +105,14 @@ class AppTheme {
     ),
   );
 
-  // Widget pour les boutons avec BoxShadow
+
   static Widget customButton({
     required String label,
     required VoidCallback onPressed,
+    Color? backgroundColor,
   }) {
+    final Color bgColor = backgroundColor ?? greenButton;
+    
     return Container(
       decoration: BoxDecoration(
         boxShadow: [
@@ -121,18 +127,18 @@ class AppTheme {
       child: ElevatedButton(
         onPressed: onPressed,
         style: ElevatedButton.styleFrom(
-          backgroundColor: greenButton,
+          backgroundColor: bgColor,
           foregroundColor: white,
           padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 50),
           textStyle: const TextStyle(
-            fontSize: 22, // Taille de police
+            fontSize: 22,
             fontWeight: FontWeight.bold,
             fontFamily: 'Nunito',
           ),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(25),
             side: const BorderSide(
-              color: white, // Bordure blanche
+              color: white,
               width: 2,
             ),
           ),
@@ -141,6 +147,7 @@ class AppTheme {
       ),
     );
   }
+
 
   // Widget pour le fond commun
   static BoxDecoration backgroundDecoration() {

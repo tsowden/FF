@@ -62,6 +62,7 @@ class _GameScreenState extends State<GameScreen> {
   int _quizCorrectAnswers = 0;
   int _quizTotalQuestions = 0;
   int _quizEarnedBerries = 0;
+  String? _lastGivenAnswer;
 
   // Messages transitoires
   Map<String, String> playerMessages = {}; 
@@ -85,9 +86,12 @@ class _GameScreenState extends State<GameScreen> {
     _gameService = widget.gameService;
     print("GameScreen: Initialisation pour le jeu ${widget.gameId}");
 
+    // Traitement du premier "tour"
     _handleNewTurn(widget.initialData);
 
-    // Listeners Challenge
+    // ------------------------------------------------------
+    // LISTENERS (Challenge, etc.)
+    // ------------------------------------------------------
     _gameService.onTurnStarted((data) {
       _handleNewTurn(data);
     });
@@ -183,15 +187,19 @@ class _GameScreenState extends State<GameScreen> {
       }
     });
 
-    // Listeners Quiz
+    // ------------------------------------------------------
+    // LISTENERS (Quiz)
+    // ------------------------------------------------------
     _gameService.onQuizStarted((data) {
       setState(() {
         _isQuizInProgress = true;
+        turnState = 'quizInProgress';
         _currentQuestionIndex = null;
         _currentQuestionDescription = null;
         _currentQuestionOptions = [];
         _wasAnswerCorrect = null;
         _correctAnswer = null;
+        _lastGivenAnswer = null;
       });
     });
 
@@ -216,11 +224,19 @@ class _GameScreenState extends State<GameScreen> {
       setState(() {
         _quizCorrectAnswers = data['correctAnswers'];
         _quizTotalQuestions = data['totalQuestions'];
-        _quizEarnedBerries = data['earnedBerries'] ?? 0;
+
+        // Vérifie si les berries sont pour le joueur local
+        if (data['playerId'] == widget.playerId) {
+          int newlyEarned = data['earnedBerries'] ?? 0;
+          _berries += newlyEarned; // Ajoute les berries au joueur local
+          _quizEarnedBerries = newlyEarned;
+        }
+
         _isQuizInProgress = false;
-        turnState = 'quizResult'; 
+        turnState = 'quizResult';
       });
     });
+
   }
 
   // ------------------------------------------------------
@@ -245,7 +261,6 @@ class _GameScreenState extends State<GameScreen> {
       _quizThemes = [];
 
       if (isPlayerActive) {
-        // Récupérer les déplacements possibles
         _gameService.getValidMoves(widget.gameId, widget.playerId, _updateValidMoves);
       }
     });
@@ -257,17 +272,17 @@ class _GameScreenState extends State<GameScreen> {
       isPlayerActive = (activePlayerName == widget.playerName);
 
       cardName = data['cardName'];
-      cardImage = data['cardImage'];        // image stockée
-      cardCategory = data['cardCategory'];  // Challenge / Quiz / ...
+      cardImage = data['cardImage'];
+      cardCategory = data['cardCategory'];
       turnState = data['turnState'];
 
       betOptions = List<String>.from(data['betOptions'] ?? []);
 
-      // Si c'est une carte Quiz
       if (cardCategory == 'Quiz') {
         _isQuizCard = true;
         final themeString = data['cardTheme'] ?? data['card_theme'] ?? '';
         if (themeString.isNotEmpty) {
+          // Convertit en List<String>
           _quizThemes = List<String>.from(
             themeString.split(';').map((s) => s.trim()),
           );
@@ -277,7 +292,7 @@ class _GameScreenState extends State<GameScreen> {
         _quizThemes = [];
       }
 
-      // Description passive/active
+      // Description
       String? passiveDescription = data['cardDescriptionPassive'];
       if (passiveDescription != null && passiveDescription.contains('{activePlayerName}')) {
         passiveDescription = passiveDescription.replaceAll('{activePlayerName}', activePlayerName ?? '');
@@ -299,6 +314,7 @@ class _GameScreenState extends State<GameScreen> {
 
   void _showTransientMessage(String playerName, String message) {
     int? availableSlot = slotsOccupied.indexWhere((occupied) => !occupied);
+
     if (availableSlot != -1) {
       setState(() {
         slotsOccupied[availableSlot] = true;
@@ -313,7 +329,7 @@ class _GameScreenState extends State<GameScreen> {
           _messageOpacity = 0.0;
         });
 
-        // Retire le message après 1s de fondu
+        // Retire le message après 1s
         Future.delayed(const Duration(seconds: 1), () {
           if (mounted) {
             setState(() {
@@ -374,9 +390,10 @@ class _GameScreenState extends State<GameScreen> {
     return Scaffold(
       body: Stack(
         children: [
+          // Background
           Container(decoration: AppTheme.backgroundDecoration()),
 
-          // Berries display top-right
+          // Berries en haut à droite
           Positioned(
             top: 40,
             right: 20,
@@ -397,7 +414,7 @@ class _GameScreenState extends State<GameScreen> {
             ),
           ),
 
-          // Main content (active vs passive)
+          // Contenu principal (actif vs passif)
           Padding(
             padding: const EdgeInsets.all(16.0),
             child: isPlayerActive
@@ -453,12 +470,11 @@ class _GameScreenState extends State<GameScreen> {
         return Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            buildCardDisplay(),   // <-- (B) image + description
+            buildCardDisplay(),
             const SizedBox(height: 20),
             AppTheme.customButton(
               label: 'Start the challenge',
-              onPressed: () =>
-                  _gameService.startBetting(widget.gameId, widget.playerId),
+              onPressed: () => _gameService.startBetting(widget.gameId, widget.playerId),
             ),
           ],
         );
@@ -518,8 +534,6 @@ class _GameScreenState extends State<GameScreen> {
     }
   }
 
-  // (C) => On ajoute les boutons de thèmes "sous la description" 
-  //        dans _buildQuizActiveView quand turnState == 'cardDrawn'
   Widget _buildQuizActiveView() {
     switch (turnState) {
       case 'movement':
@@ -537,13 +551,11 @@ class _GameScreenState extends State<GameScreen> {
         );
 
       case 'cardDrawn':
-        // On affiche la carte (description & image), et en dessous: choix du thème
         return Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            buildCardDisplay(),  
+            buildCardDisplay(),
             const SizedBox(height: 20),
-            // Si on n'a pas encore démarré le quiz => on propose les thèmes
             if (!_isQuizInProgress) ...[
               if (_quizThemes.isNotEmpty) ...[
                 Text(
@@ -566,7 +578,6 @@ class _GameScreenState extends State<GameScreen> {
                   ),
               ],
             ] else
-              // Le quiz est déjà en cours => question
               buildQuizQuestionView(isActive: true),
           ],
         );
@@ -597,7 +608,6 @@ class _GameScreenState extends State<GameScreen> {
         );
 
       default:
-        // Si le quiz est en cours (turnState != 'quizResult'), on affiche la question
         if (_isQuizInProgress) {
           return buildQuizQuestionView(isActive: true);
         }
@@ -633,6 +643,7 @@ class _GameScreenState extends State<GameScreen> {
             ),
           ],
         );
+
       default:
         return Container();
     }
@@ -651,14 +662,12 @@ class _GameScreenState extends State<GameScreen> {
     }
   }
 
-  // (A) => On veut afficher: "{activePlayerName} is moving in the forest..."
-  //       quand turnState == 'movement' pour les joueurs passifs
   Widget _buildChallengePassiveView() {
     switch (turnState) {
       case 'movement':
         return Center(
           child: Text(
-            "$activePlayerName is moving in the forest...",  // <-- en anglais
+            "$activePlayerName is moving in the forest...",
             style: AppTheme.themeData.textTheme.bodyMedium,
             textAlign: TextAlign.center,
           ),
@@ -741,7 +750,7 @@ class _GameScreenState extends State<GameScreen> {
       case 'movement':
         return Center(
           child: Text(
-            "$activePlayerName is moving in the forest...", // idem en anglais
+            "$activePlayerName is moving in the forest...",
             style: AppTheme.themeData.textTheme.bodyMedium,
             textAlign: TextAlign.center,
           ),
@@ -783,6 +792,7 @@ class _GameScreenState extends State<GameScreen> {
 
       default:
         if (_isQuizInProgress) {
+          // Le passif voit la question, mais isActive=false => pas de clic
           return buildQuizQuestionView(isActive: false);
         }
         return Container();
@@ -818,11 +828,12 @@ class _GameScreenState extends State<GameScreen> {
         ),
       );
     }
+
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         Text(
-          "Question #${_currentQuestionIndex! + 1}",
+          "Question ${_currentQuestionIndex! + 1}",
           style: AppTheme.themeData.textTheme.bodyMedium,
         ),
         const SizedBox(height: 10),
@@ -836,61 +847,56 @@ class _GameScreenState extends State<GameScreen> {
             ),
           ),
         const SizedBox(height: 20),
+
+        // Les 4 (ou plus) propositions
         for (var option in _currentQuestionOptions)
           _buildAnswerButton(option, isActive),
-        const SizedBox(height: 20),
-        if (_wasAnswerCorrect != null)
-          Text(
-            _wasAnswerCorrect!
-                ? "Correct!"
-                : "Wrong! Correct answer = $_correctAnswer",
-            style: TextStyle(
-              color: _wasAnswerCorrect! ? Colors.green : Colors.red,
-              fontWeight: FontWeight.bold,
-              fontSize: 18,
-            ),
-          ),
+
+        // On NE met plus de texte "Correct!" ou "Wrong!"
       ],
     );
   }
 
   Widget _buildAnswerButton(String option, bool isActive) {
-    bool highlightGreen = false;
-    bool highlightRed = false;
-    if (_correctAnswer != null && option == _correctAnswer) {
-      highlightGreen = true;
-    }
-    // Pour afficher en rouge la réponse cliquée (si fausse), on peut
-    // stocker la "lastGivenAnswer" dans un champ d'état, etc.
+    Color btnColor = AppTheme.greenButton;
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4.0, horizontal: 40),
-      child: ElevatedButton(
-        style: ElevatedButton.styleFrom(
-          backgroundColor: highlightGreen
-              ? Colors.green
-              : (highlightRed ? Colors.red : AppTheme.greenButton),
-        ),
-        onPressed: isActive && _wasAnswerCorrect == null
+    // Coloration rouge/vert si c’est le bouton cliqué etc.
+    if (_lastGivenAnswer != null && _wasAnswerCorrect != null) {
+      if (option == _lastGivenAnswer) {
+        if (_wasAnswerCorrect == true && _correctAnswer == option) {
+          btnColor = Colors.green;
+        } else {
+          btnColor = Colors.red;
+        }
+      }
+    }
+
+    final canClick = isActive && _wasAnswerCorrect == null;
+
+    // On appelle `customButton`, en lui passant la `backgroundColor` désirée.
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 4.0),
+      child: AppTheme.customButton(
+        label: option,
+        onPressed: canClick
             ? () {
-                _gameService.quizAnswer(
-                  widget.gameId,
-                  widget.playerId,
-                  option,
-                );
+                setState(() {
+                  _lastGivenAnswer = option;
+                });
+                _gameService.quizAnswer(widget.gameId, widget.playerId, option);
               }
-            : null,
-        child: Text(option),
+            : () {},
+        backgroundColor: btnColor, // on ajoute un paramètre dans customButton
       ),
     );
   }
+
 
   Widget buildCardDisplay() {
     final screenHeight = MediaQuery.of(context).size.height;
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        // Titre
         if (cardName != null)
           Text(
             cardName!,
@@ -902,7 +908,6 @@ class _GameScreenState extends State<GameScreen> {
             ),
             textAlign: TextAlign.center,
           ),
-        // Description
         if (descriptionToDisplay != null)
           Padding(
             padding: const EdgeInsets.only(top: 8.0),
@@ -916,7 +921,6 @@ class _GameScreenState extends State<GameScreen> {
               textAlign: TextAlign.center,
             ),
           ),
-        // (B) S'assurer que l'image s'affiche
         if (cardImage != null)
           Padding(
             padding: EdgeInsets.only(bottom: screenHeight * 0.02),
@@ -940,8 +944,7 @@ class _GameScreenState extends State<GameScreen> {
         if (validMoves['canMoveForward'] == true)
           AppTheme.customButton(
             label: 'Move forward',
-            onPressed: () =>
-                _gameService.movePlayer(widget.gameId, widget.playerId, 'forward'),
+            onPressed: () => _gameService.movePlayer(widget.gameId, widget.playerId, 'forward'),
           ),
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -951,8 +954,7 @@ class _GameScreenState extends State<GameScreen> {
                 padding: const EdgeInsets.symmetric(horizontal: 4.0),
                 child: AppTheme.customButton(
                   label: 'Left',
-                  onPressed: () =>
-                      _gameService.movePlayer(widget.gameId, widget.playerId, 'left'),
+                  onPressed: () => _gameService.movePlayer(widget.gameId, widget.playerId, 'left'),
                 ),
               ),
             if (validMoves['canMoveRight'] == true)
@@ -960,8 +962,7 @@ class _GameScreenState extends State<GameScreen> {
                 padding: const EdgeInsets.symmetric(horizontal: 4.0),
                 child: AppTheme.customButton(
                   label: 'Right',
-                  onPressed: () =>
-                      _gameService.movePlayer(widget.gameId, widget.playerId, 'right'),
+                  onPressed: () => _gameService.movePlayer(widget.gameId, widget.playerId, 'right'),
                 ),
               ),
           ],
