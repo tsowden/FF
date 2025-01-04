@@ -46,12 +46,15 @@ class GenericCardHandler {
         activePlayerName: activePlayer.playerName,
         cardDescription: card.card_description || 'Aucune description disponible.',
         cardDescriptionPassive: cardDescriptionPassive,
-        cardImage: card.card_image || null,
         cardName: card.card_name || 'Carte inconnue',
+        cardImage: card.card_image || null,
+        cardTheme: card.card_theme || '',
+
         cardCategory: card.card_category || 'Catégorie inconnue',
         turnState: 'cardDrawn',
-        betOptions: betOptions,
+        betOptions: betOptions || null,
       });
+
 
       console.log(`GenericCardHandler: Card "${card.card_name}" drawn for ${activePlayer.playerName} in game ${this.gameId}.`);
     } catch (error) {

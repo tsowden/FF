@@ -11,6 +11,65 @@ function generateGameId(length = 6) {
   return result;
 }
 
+const centralAccessibleCoordinates = [
+  { x:4, y:5 },   // E6
+  { x:4, y:7 },   // E8
+  { x:4, y:8 },   // E9
+  { x:4, y:10 },  // E11
+  { x:4, y:14 },  // E15
+  { x:5, y:5 },   // F6
+  { x:5, y:6 },   // F7
+  { x:5, y:8 },   // F9
+  { x:5, y:9 },   // F10
+  { x:5, y:10 },  // F11
+  { x:5, y:11 },  // F12
+  { x:5, y:12 },  // F13
+  { x:5, y:13 },  // F14
+  { x:5, y:14 },  // F15
+  { x:6, y:6 },   // G7
+  { x:6, y:8 },   // G9
+  { x:6, y:13 },  // G14
+  { x:7, y:6 },   // H7
+  { x:7, y:7 },   // H8
+  { x:7, y:8 },   // H9
+  { x:7, y:9 },   // H10
+  { x:7, y:13 },  // H14
+  { x:7, y:14 },  // H15
+  { x:8, y:5 },   // I6
+  { x:8, y:6 },   // I7
+  { x:8, y:9 },   // I10
+  { x:8, y:12 },  // I13
+  { x:8, y:13 },  // I14
+  { x:9, y:6 },   // J7
+  { x:9, y:9 },   // J10
+  { x:9, y:12 },  // J13
+  { x:10, y:5 },  // K6
+  { x:10, y:6 },  // K7
+  { x:10, y:7 },  // K8
+  { x:10, y:8 },  // K9
+  { x:10, y:9 },  // K10
+  { x:10, y:10 }, // K11
+  { x:10, y:11 }, // K12
+  { x:10, y:12 }, // K13
+  { x:11, y:6 },  // L7
+  { x:11, y:8 },  // L9
+  { x:11, y:10 }, // L11
+  { x:11, y:12 }, // L13
+  { x:11, y:13 }, // L14
+];
+
+function getRandomCentralPosition() {
+  const randomIndex = Math.floor(Math.random() * centralAccessibleCoordinates.length);
+  return centralAccessibleCoordinates[randomIndex];
+}
+
+function getRandomOrientation() {
+  const orientations = ['north', 'south', 'east', 'west'];
+  const randomIndex = Math.floor(Math.random() * orientations.length);
+  return orientations[randomIndex];
+}
+
+
 const createGame = async (req, res) => {
   const { playerName } = req.body;
   console.log(`createGame: Requête reçue pour créer une partie. playerName="${playerName}"`);
@@ -25,8 +84,9 @@ const createGame = async (req, res) => {
     const playerId = uuidv4();
     console.log(`createGame: Nouveau playerId="${playerId}" pour le host "${playerName}"`);
 
-    const startingPosition = { x: 7, y: 8 };
-    const startingOrientation = 'north';
+    // Position de départ aléatoire parmi le bloc central
+    const startingPosition = getRandomCentralPosition();
+    const startingOrientation = getRandomOrientation();
 
     const gameData = {
       players: JSON.stringify([
@@ -37,6 +97,7 @@ const createGame = async (req, res) => {
           isHost: true,
           position: startingPosition,
           orientation: startingOrientation,
+          berries: 0,
         },
       ]),
       activePlayerId: playerId,
@@ -80,7 +141,8 @@ const joinGame = async (req, res) => {
     console.log(`joinGame: Nouveau playerId="${playerId}" pour le joueur "${playerName}" rejoignant la partie.`);
 
     // Position par défaut
-    const startingPosition = { x: players.length, y: 0, orientation: 'north' };
+    const startingPosition = getRandomCentralPosition();
+    const startingOrientation = getRandomOrientation();
 
     players.push({
       playerId,
@@ -88,7 +150,8 @@ const joinGame = async (req, res) => {
       ready: false,
       isHost: false,
       position: startingPosition,
-      orientation: startingPosition.orientation,
+      orientation: startingOrientation,
+      berries: 0,
     });
 
     await redisClient.hSet(`game:${gameId}`, 'players', JSON.stringify(players));

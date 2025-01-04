@@ -3,7 +3,8 @@ import 'package:flutter/material.dart';
 class AppTheme {
   // Couleurs principales
   static const Color greenButton = Color(0xFF135836);
-  static const Color darkerGreen = Color.fromARGB(255, 10, 52, 31);
+  // static const Color darkerGreen = Color.fromARGB(255, 10, 52, 31);
+  static const Color darkerGreen = Color.fromARGB(255, 6, 37, 22);
   static const Color lightMint = Color.fromARGB(255, 211, 248, 228);
   static const Color orangeTitle = Color.fromARGB(255, 240, 110, 10);
   static const Color white = Colors.white;
@@ -33,17 +34,22 @@ class AppTheme {
         ],
       ),
       titleLarge: TextStyle(
-        fontSize: 21,
+        fontSize: 28,
         fontWeight: FontWeight.w600,
         color: greenButton,
       ),
       bodyLarge: TextStyle(
-        fontSize: 17,
+        fontSize: 22,
         fontWeight: FontWeight.bold,
         color: greenButton,
       ),
       bodyMedium: TextStyle(
-        fontSize: 15,
+        fontWeight: FontWeight.bold,
+        fontSize: 18,
+        color: greenButton,
+      ),
+      bodySmall: TextStyle(
+        fontSize: 18,
         color: greenButton,
       ),
     ),

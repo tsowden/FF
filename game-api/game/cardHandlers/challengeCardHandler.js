@@ -1,4 +1,3 @@
-// game/cardHandlers/challengeCardHandler.js
 const redisClient = require('../../config/redis');
 const GenericCardHandler = require('./genericCardHandler');
 
@@ -16,9 +15,16 @@ class ChallengeCardHandler extends GenericCardHandler {
     try {
       await redisClient.hSet(`game:${this.gameId}`, 'turnState', 'betting');
       await redisClient.hSet(`game:${this.gameId}`, 'bets', JSON.stringify({}));
-
-      this.io.to(this.gameId).emit('turnStateChanged', { turnState: 'betting' });
-      console.log(`ChallengeCardHandler: Betting phase started for game ${this.gameId}.`);
+  
+      // Récupérer la currentCard stockée
+      const cardJson = await redisClient.hGet(`game:${this.gameId}`, 'currentCard');
+      const currentCard = JSON.parse(cardJson || '{}');
+      
+      // Ici, on renvoie betOptions dans la payload
+      this.io.to(this.gameId).emit('turnStateChanged', {
+        turnState: 'betting',
+        betOptions: currentCard.validBets ?? [],
+      });
     } catch (error) {
       console.error('ChallengeCardHandler: Error starting betting phase:', error);
     }
@@ -31,6 +37,7 @@ class ChallengeCardHandler extends GenericCardHandler {
       const bets = JSON.parse(gameData.bets || '{}');
 
       const validBets = currentCard.validBets || [];
+
       if (!validBets.includes(bet)) {
         console.error(`ChallengeCardHandler: Invalid bet "${bet}" from player ${playerId}`);
         return { error: 'Invalid bet' };
@@ -45,7 +52,11 @@ class ChallengeCardHandler extends GenericCardHandler {
       const nonActivePlayers = players.filter((p) => p.playerId !== gameData.activePlayerId);
       if (Object.keys(bets).length >= nonActivePlayers.length) {
         console.log(`ChallengeCardHandler: All bets received`);
-        await this.startChallenge();
+        // Attendre 2 secondes avant de démarrer la phase suivante
+        setTimeout(async () => {
+          console.log(`ChallengeCardHandler: Starting challenge after delay`);
+          await this.startChallenge();
+        }, 2000); 
       }
     } catch (error) {
       console.error(`ChallengeCardHandler: Error handling bet:`, error);
@@ -55,6 +66,8 @@ class ChallengeCardHandler extends GenericCardHandler {
   async startChallenge() {
     try {
       await redisClient.hSet(`game:${this.gameId}`, 'turnState', 'challengeInProgress');
+      await redisClient.hSet(`game:${this.gameId}`, 'votes', JSON.stringify({}));
+
       this.io.to(this.gameId).emit('turnStateChanged', { turnState: 'challengeInProgress' });
       console.log(`ChallengeCardHandler: Challenge started for game ${this.gameId}.`);
     } catch (error) {
@@ -78,7 +91,17 @@ class ChallengeCardHandler extends GenericCardHandler {
 
       console.log(`ChallengeCardHandler: Processing result for player ${activePlayer.playerName}. Result: ${result}`);
 
-      // MàJ scores
+      // Mise à jour des scores et ajout des baies (berries)
+      const currentCard = JSON.parse(gameData.currentCard || '{}');
+      const betOptions = currentCard.validBets || [];
+      const rewardOptions = currentCard.rewardOptions || [];
+      const idx = betOptions.indexOf(result);
+      let berryReward = 0;
+
+      if (idx !== -1 && rewardOptions[idx]) {
+        berryReward = parseInt(rewardOptions[idx].replace('b', ''), 10);
+      }
+
       for (const [bettingPlayerId, bet] of Object.entries(bets)) {
         const bettingPlayer = players.find((p) => p.playerId === bettingPlayerId);
         if (bettingPlayer && bet === result) {
@@ -89,19 +112,36 @@ class ChallengeCardHandler extends GenericCardHandler {
         activePlayer.score = (activePlayer.score || 0) + 2;
       }
 
+      // Ajouter les berries au joueur actif
+      activePlayer.berries = (activePlayer.berries || 0) + berryReward;
       await redisClient.hSet(`game:${this.gameId}`, 'players', JSON.stringify(players));
 
-      // Notifier
+      // Notifier tous les clients avec la récompense
       this.io.to(this.gameId).emit('challengeResult', {
         activePlayerName: activePlayer.playerName,
         result,
+        berryReward,
         rewards: players.map((p) => ({
           playerName: p.playerName,
           score: p.score || 0,
+          berries: p.berries || 0,
         })),
+        majorityVote: result,
       });
 
-      console.log(`ChallengeCardHandler: Challenge result broadcasted (game ${this.gameId}).`);
+      console.log("DEBUG - challengeResult event data:", {
+        activePlayerName: activePlayer.playerName,
+        result,
+        berryReward,
+        rewards: players.map((p) => ({
+          playerName: p.playerName,
+          score: p.score || 0,
+          berries: p.berries || 0,
+        })),
+        majorityVote: result,
+      });
+
+      console.log(`ChallengeCardHandler: Challenge result broadcasted (game ${this.gameId}). Berry reward: ${berryReward}`);
     } catch (error) {
       console.error(`ChallengeCardHandler: Error processing challenge result:`, error);
     }
@@ -117,7 +157,6 @@ class ChallengeCardHandler extends GenericCardHandler {
       const players = JSON.parse(gameData.players || '[]');
       const nonActivePlayers = players.filter((p) => p.playerId !== gameData.activePlayerId);
 
-      // Vérifier la majorité
       if (Object.keys(votes).length >= Math.ceil(nonActivePlayers.length / 2)) {
         const voteCounts = {};
         Object.values(votes).forEach((v) => {
@@ -133,31 +172,7 @@ class ChallengeCardHandler extends GenericCardHandler {
           const majorityVote = majorityVotes[0];
           await redisClient.hSet(`game:${this.gameId}`, 'turnState', 'result');
           await redisClient.hSet(`game:${this.gameId}`, 'majorityVote', majorityVote);
-
-          this.io.to(this.gameId).emit('turnStateChanged', {
-            turnState: 'result',
-            majorityVote,
-          });
-          console.log(`ChallengeCardHandler: Majority vote reached: ${majorityVote}`);
-        } else {
-          // Égalité ou reste des joueurs
-          const remainingPlayers = nonActivePlayers.filter((p) => !votes.hasOwnProperty(p.playerId));
-          if (remainingPlayers.length > 0) {
-            this.io.to(this.gameId).emit('challengeVotesUpdated', {
-              isMajorityReached: false,
-            });
-          } else {
-            // Égalité => vote aléatoire
-            const majorityVote = majorityVotes[Math.floor(Math.random() * majorityVotes.length)];
-            await redisClient.hSet(`game:${this.gameId}`, 'turnState', 'result');
-            await redisClient.hSet(`game:${this.gameId}`, 'majorityVote', majorityVote);
-
-            this.io.to(this.gameId).emit('turnStateChanged', {
-              turnState: 'result',
-              majorityVote,
-            });
-            console.log(`ChallengeCardHandler: Tie => random majority vote: ${majorityVote}`);
-          }
+          await this.processChallengeResult(gameData.activePlayerId, majorityVote);
         }
       } else {
         this.io.to(this.gameId).emit('challengeVotesUpdated', { isMajorityReached: false });

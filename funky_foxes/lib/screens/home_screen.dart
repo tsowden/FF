@@ -107,24 +107,41 @@ class _HomeScreenState extends State<HomeScreen> {
     return await showDialog<String>(
       context: context,
       builder: (context) {
-        return AlertDialog(
-          title: Text(title),
-          content: TextField(
-            controller: controller,
-            decoration: InputDecoration(hintText: hint),
+        return Theme(
+          data: AppTheme.themeData,
+          child: AlertDialog(
+            // On réintroduit le titre
+            title: Text(
+              title,
+              style: AppTheme.themeData.textTheme.bodyLarge,
+            ),
+            content: TextField(
+              controller: controller,
+              decoration: InputDecoration(
+                hintText: hint,
+                hintStyle: AppTheme.themeData.textTheme.bodySmall,
+              ),
+              style: AppTheme.themeData.textTheme.bodySmall,
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: Text(
+                  'Cancel',
+                  style: AppTheme.themeData.textTheme.bodyMedium,
+                ),
+              ),
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(context, controller.text.trim());
+                },
+                child: Text(
+                  'Confirm',
+                  style: AppTheme.themeData.textTheme.bodyMedium,
+                ),
+              ),
+            ],
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: Text('Cancel'),
-            ),
-            TextButton(
-              onPressed: () {
-                Navigator.pop(context, controller.text.trim());
-              },
-              child: Text('Confirm'),
-            ),
-          ],
         );
       },
     );

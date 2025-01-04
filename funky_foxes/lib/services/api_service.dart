@@ -2,7 +2,8 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 class ApiService {
-  static const String baseUrl = 'http://192.168.0.53:3000';
+  static const String baseUrl = 'http://192.168.0.53:3000'; // Wifi
+  // static const String baseUrl = 'http://192.168.252.236:3000'; // 5G
 
   /// Créer une partie
   Future<Map<String, String>?> createGame(String playerName) async {
@@ -46,7 +47,7 @@ class ApiService {
   Future<Map<String, String>?> joinGame(String gameId, String playerName) async {
     print('ApiService.joinGame(gameId=$gameId, playerName=$playerName) -> POST $baseUrl/api/game/join-game');
     
-    final url = Uri.parse('$baseUrl/api/game/join-game'); // Changement ici
+    final url = Uri.parse('$baseUrl/api/game/join-game');
     final body = jsonEncode({'gameId': gameId, 'playerName': playerName});
 
     try {

@@ -55,6 +55,7 @@ io.on('connection', (socket) => {
 });
 
 // Démarre le serveur
-server.listen(port, () => {
-  console.log(`Backend: Serveur démarré sur le port ${port}`);
+server.listen(port, '0.0.0.0', () => {
+  console.log(`Backend: Serveur accessible sur toutes les interfaces, port ${port}`);
 });
+

@@ -1,18 +1,16 @@
-// cardHandlers/index.js
+// game/cardHandlers/index.js
 
 const ChallengeCardHandler = require('./challengeCardHandler');
 const GenericCardHandler = require('./genericCardHandler');
+const QuizCardHandler = require('./quizCardHandler');
 
 function getCardHandlerForCategory(gameId, io, cardCategory) {
   switch (cardCategory) {
     case 'Challenge':
       return new ChallengeCardHandler(gameId, io);
-    // case 'Treasure':
-    //   return new TreasureCardHandler(gameId, io);
-    // case 'Trap':
-    //   return new TrapCardHandler(gameId, io);
+    case 'Quiz': 
+      return new QuizCardHandler(gameId, io);
     default:
-      // Si on n'a pas de type spécifique, on retourne le handler générique
       return new GenericCardHandler(gameId, io);
   }
 }
