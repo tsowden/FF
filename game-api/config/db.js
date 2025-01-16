@@ -7,7 +7,6 @@ const db = mysql.createPool({
   database: process.env.MYSQL_DATABASE
 });
 
-// Pas besoin de db.connect() dans un pool
 console.log('Connecté à MySQL2/promise');
 
 module.exports = db;

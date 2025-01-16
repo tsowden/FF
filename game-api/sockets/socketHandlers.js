@@ -8,8 +8,94 @@ const getRandomCard = require('../models/card');
 const handleSocketEvents = (io, socket) => {
   console.log('Backend: Socket.IO: Nouveau joueur connecté');
 
-  // LOBBY LOGIC :
 
+  // -----------------------------------------------------
+  // FONCTION Tutorial
+  // -----------------------------------------------------
+
+  socket.on('finishTutorial', async ({ gameId, playerId }) => {
+    console.log(`Backend: Player ${playerId} finished tutorial in game ${gameId}`);
+
+    try {
+      const gameData = await redisClient.hGetAll(`game:${gameId}`);
+      if (!gameData) return;
+
+      const players = JSON.parse(gameData.players || '[]');
+      const player = players.find(p => p.playerId === playerId);
+      if (!player) return;
+
+      player.tutorialDone = true;
+
+      await redisClient.hSet(`game:${gameId}`, 'players', JSON.stringify(players));
+
+      const allDone = players.every(p => p.tutorialDone === true);
+
+      if (allDone) {
+        const gameData = await redisClient.hGetAll(`game:${gameId}`);
+        const players = JSON.parse(gameData.players || '[]');
+        const maze = JSON.parse(gameData.maze || '[]');
+        const activePlayerId = gameData.activePlayerId;
+        const activePlayer = players.find((p) => p.playerId === activePlayerId);
+        
+        io.to(gameId).emit('tutorialAllFinished', {
+          maze,
+          players,
+          activePlayerName: activePlayer ? activePlayer.playerName : null,
+        });
+      }
+
+    } catch (error) {
+      console.error("Backend: Error in finishTutorial:", error);
+    }
+  });
+
+
+
+  // -----------------------------------------------------
+  // FONCTION UTILE: broadcastGameInfos
+  // -----------------------------------------------------
+  async function broadcastGameInfos(gameId) {
+    try {
+      const gameData = await redisClient.hGetAll(`game:${gameId}`);
+      if (!gameData) return;
+
+      const players = JSON.parse(gameData.players || '[]');
+      const activePlayerId = gameData.activePlayerId;
+
+      console.log("Backend: broadcastGameInfos -> players =", players);
+
+      const sorted = [...players].sort((a, b) => (b.berries || 0) - (a.berries || 0));
+
+      const playersInfo = sorted.map((p, index) => {
+        return {
+          playerId: p.playerId,
+          playerName: p.playerName,
+          berries: p.berries || 0,
+          rank: index + 1,
+        };
+      });
+
+      let activePlayerName = null;
+      const activePlayer = players.find((p) => p.playerId === activePlayerId);
+      if (activePlayer) {
+        activePlayerName = activePlayer.playerName;
+      }
+
+      console.log("Backend: broadcastGameInfos -> sending playersInfo with avatarBase64 to front...");
+
+      io.to(gameId).emit('gameInfos', {
+        players: playersInfo,
+        activePlayerName: activePlayerName,
+        // activePlayerAvatar: activePlayer?.avatarUrl || null
+      });
+    } catch (error) {
+      console.error('broadcastGameInfos: Erreur lors de la récupération des infos de jeu:', error);
+    }
+  }
+
+  // -----------------------------------------------------
+  // LOBBY LOGIC
+  // -----------------------------------------------------
   socket.on('playerReady', async ({ gameId, playerName, isReady }) => {
     console.log(`Backend: Mise à jour du statut prêt pour ${playerName} dans la partie ${gameId} : ${isReady}`);
     try {
@@ -28,6 +114,9 @@ const handleSocketEvents = (io, socket) => {
           io.to(gameId).emit('allPlayersReady');
         }
       }
+
+      await broadcastGameInfos(gameId);
+
     } catch (error) {
       console.error('Backend: Erreur lors de la mise à jour de l\'état "Prêt" du joueur:', error);
     }
@@ -43,13 +132,49 @@ const handleSocketEvents = (io, socket) => {
 
       console.log(`Backend: Envoi de la liste des joueurs de la partie ${gameId}`);
       io.to(gameId).emit('currentPlayers', players);
+
+      // Nouveau: broadcast infos
+      await broadcastGameInfos(gameId);
+
     } catch (error) {
       console.error('Backend: Erreur lors de la récupération des joueurs:', error);
     }
   });
 
-  // START OF THE GAME LOGIC :
+  socket.on('updateAvatar', async ({ gameId, playerId, avatarBase64 }) => {
+    console.log(`Backend: updateAvatar event for playerId=${playerId}, len(avatarBase64)=${avatarBase64?.length}`);
+  
+    try {
+      const gameData = await redisClient.hGetAll(`game:${gameId}`);
+      if (!gameData) {
+        console.error(`Backend: Game not found for id=${gameId}`);
+        return;
+      }
+  
+      const players = JSON.parse(gameData.players || '[]');
+      const player = players.find(p => p.playerId === playerId);
+  
+      if (!player) {
+        console.error(`Backend: Player with ID ${playerId} not found in game ${gameId}`);
+        return;
+      }
+  
+      player.avatarBase64 = avatarBase64;
+      console.log(`Backend: Storing avatarBase64 for ${player.playerName} in game ${gameId}`);
+  
+      await redisClient.hSet(`game:${gameId}`, 'players', JSON.stringify(players));
+  
+      await broadcastGameInfos(gameId);
+  
+    } catch (err) {
+      console.error('Backend: updateAvatar error:', err);
+    }
+  });
+  
 
+  // -----------------------------------------------------
+  // START OF THE GAME LOGIC
+  // -----------------------------------------------------
   socket.on('startGame', async ({ gameId }) => {
     console.log(`Backend: Demande de démarrage du jeu pour la partie ${gameId}`);
     try {
@@ -77,14 +202,18 @@ const handleSocketEvents = (io, socket) => {
       await handler.handleCard(firstPlayer.playerId, card);
 
       console.log(`Backend: Premier joueur actif défini : ${activePlayerName} (ID: ${firstPlayer.playerId})`);
+
+      // broadcast infos
+      await broadcastGameInfos(gameId);
+
     } catch (error) {
       console.error(`Backend: Erreur lors du démarrage du jeu pour ${gameId} :`, error);
     }
   });
 
-
-  // TURN LOGIC : 
-
+  // -----------------------------------------------------
+  // TURN LOGIC
+  // -----------------------------------------------------
   socket.on('endTurn', async (gameId) => {
     if (typeof gameId !== 'string') {
       console.error(`Backend: gameId reçu dans un format incorrect:`, gameId);
@@ -95,6 +224,9 @@ const handleSocketEvents = (io, socket) => {
     try {
       const turnManager = new TurnManager(gameId, io);
       await turnManager.changeActivePlayer();
+
+      await broadcastGameInfos(gameId);
+
     } catch (error) {
       console.error('Backend: Erreur lors de endTurn:', error);
     }
@@ -126,13 +258,17 @@ const handleSocketEvents = (io, socket) => {
     }
   });
 
-  // MOVE LOGIC :
-
+  // -----------------------------------------------------
+  // MOVE LOGIC
+  // -----------------------------------------------------
   socket.on('playerMove', async ({ gameId, playerId, move }) => {
     console.log(`Backend: Player ${playerId} moves ${move} in game ${gameId}`);
     try {
       const turnManager = new TurnManager(gameId, io);
       await turnManager.handleMove(playerId, move);
+
+      await broadcastGameInfos(gameId);
+
     } catch (error) {
       console.error('Backend: Error processing player move:', error);
       socket.emit('moveError', { message: 'Error processing move' });
@@ -162,13 +298,17 @@ const handleSocketEvents = (io, socket) => {
     }
   });
 
-  // CHALLENGE LOGIC (BETS) :
-
+  // -----------------------------------------------------
+  // CHALLENGE LOGIC (BETS)
+  // -----------------------------------------------------
   socket.on('startBetting', async ({ gameId, playerId }) => {
     console.log(`Backend: Player ${playerId} is starting the betting phase in game ${gameId}`);
     try {
       const handler = getCardHandlerForCategory(gameId, io, 'Challenge');
       await handler.startBetting();
+
+      await broadcastGameInfos(gameId);
+
     } catch (error) {
       console.error('Backend: Error starting betting phase:', error);
     }
@@ -194,6 +334,9 @@ const handleSocketEvents = (io, socket) => {
         playerName: player.playerName,
         bet: bet,
       });
+
+      await broadcastGameInfos(gameId);
+
     } catch (error) {
       console.error('Backend: Error processing bet:', error);
     }
@@ -204,18 +347,25 @@ const handleSocketEvents = (io, socket) => {
     try {
       const handler = getCardHandlerForCategory(gameId, io, 'Challenge');
       await handler.handleChallengeVote(playerId, vote);
+
+      await broadcastGameInfos(gameId);
+
     } catch (error) {
       console.error('Backend: Error processing challenge vote:', error);
     }
   });
 
-  // QUIZ LOGIC : 
-
+  // -----------------------------------------------------
+  // QUIZ LOGIC
+  // -----------------------------------------------------
   socket.on('startQuiz', async ({ gameId, playerId, chosenTheme }) => {
     console.log(`Backend: Player ${playerId} starts the quiz with theme=${chosenTheme} in game=${gameId}`);
     try {
       const handler = getCardHandlerForCategory(gameId, io, 'Quiz');
       await handler.startQuiz(playerId, chosenTheme);
+
+      await broadcastGameInfos(gameId);
+
     } catch (error) {
       console.error('Backend: Error starting quiz:', error);
     }
@@ -226,6 +376,10 @@ const handleSocketEvents = (io, socket) => {
     try {
       const handler = getCardHandlerForCategory(gameId, io, 'Quiz');
       await handler.handleAnswer(playerId, answer);
+
+      // broadcast infos
+      await broadcastGameInfos(gameId);
+
     } catch (error) {
       console.error('Backend: Error processing quizAnswer:', error);
     }

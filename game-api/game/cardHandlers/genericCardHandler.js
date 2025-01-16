@@ -41,7 +41,13 @@ class GenericCardHandler {
         rewardOptions: rewardOptions,
       }));
 
+      
+
       // 6) Notifier tous les joueurs (émission “cardDrawn”)
+      console.log('DEBUG - Emitting cardDrawn with:', {
+        cardCategory: card.card_category,
+        cardTheme: card.card_theme,
+      });
       this.io.to(this.gameId).emit('cardDrawn', {
         activePlayerName: activePlayer.playerName,
         cardDescription: card.card_description || 'Aucune description disponible.',

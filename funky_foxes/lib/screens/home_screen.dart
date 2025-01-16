@@ -1,4 +1,7 @@
+// lib/screens/home_screen.dart
+
 import 'package:flutter/material.dart';
+import 'package:funky_foxes/services/game_service.dart';
 import '../services/api_service.dart';
 import '../styles/app_theme.dart';
 import 'lobby_screen.dart';
@@ -28,6 +31,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
         if (result != null) {
           print('HomeScreen: createGame OK -> gameId=${result['gameId']}, playerId=${result['playerId']}');
+          final gameService = GameService();   // (LIGNE AJOUTÉE)
+
           Navigator.push(
             context,
             MaterialPageRoute(
@@ -36,6 +41,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 playerId: result['playerId']!,
                 playerName: playerName,
                 isHost: true,
+                gameService: gameService,
               ),
             ),
           );
@@ -72,7 +78,8 @@ class _HomeScreenState extends State<HomeScreen> {
         try {
           print('HomeScreen: Appel API joinGame(gameId=$gameId, playerName=$playerName)');
           final result = await _apiService.joinGame(gameId, playerName);
-
+          final gameService = GameService();   // (LIGNE AJOUTÉE)
+          
           if (result != null) {
             print('HomeScreen: joinGame OK -> playerId=${result['playerId']}');
             Navigator.push(
@@ -83,6 +90,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   playerId: result['playerId']!,
                   playerName: playerName,
                   isHost: false,
+                  gameService: gameService
                 ),
               ),
             );
@@ -110,7 +118,6 @@ class _HomeScreenState extends State<HomeScreen> {
         return Theme(
           data: AppTheme.themeData,
           child: AlertDialog(
-            // On réintroduit le titre
             title: Text(
               title,
               style: AppTheme.themeData.textTheme.bodyLarge,
@@ -168,8 +175,7 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _validatePlayerName(String name) {
     final regex = RegExp(r'^[a-zA-Z0-9\-]{1,10}$');
     if (!regex.hasMatch(name)) {
-      _showErrorDialog(
-          'Invalid nickname. Use only letters, digits, or "-".');
+      _showErrorDialog('Invalid nickname. Use only letters, digits, or "-".');
       return false;
     }
     return true;

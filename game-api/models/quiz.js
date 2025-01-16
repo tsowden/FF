@@ -1,13 +1,6 @@
     // models/quiz.js
-    const db = require('../config/db'); // le pool MySQL2/promise
+    const db = require('../config/db'); 
 
-    /**
-     * getThreeQuestions:
-     *   Récupère 3 questions pour un certain thème :
-     *    1 question difficulty=1
-     *    1 question difficulty=2
-     *    1 question difficulty=3
-     */
     async function getThreeQuestions(category) {
     const questions = [];
 
@@ -20,7 +13,6 @@
         LIMIT 1`,
         [category]
     );
-    // rows1 est un array de lignes
     if (rows1 && rows1.length > 0) {
         questions.push(rows1[0]);
     }

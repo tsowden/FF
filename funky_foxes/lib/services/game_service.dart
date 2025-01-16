@@ -13,8 +13,8 @@ class GameService {
   GameService() {
     // Initialize the socket in the constructor
     socket = IO.io(
-      'http://192.168.0.53:3000', // wifi
-      // 'http://192.168.252.236:3000', // 5G
+      // 'http://192.168.0.53:3000', // wifi
+      'http://192.168.155.236:3000', // 5G
       IO.OptionBuilder()
           .setTransports(['websocket'])
           .disableAutoConnect()
@@ -61,9 +61,28 @@ class GameService {
     });
   }
 
+  void updateAvatar(String gameId, String playerId, String base64Image) {
+    print("GameService: Updating avatar for player $playerId in game $gameId");
+    socket.emit('updateAvatar', {
+      'gameId': gameId,
+      'playerId': playerId,
+      'avatarBase64': base64Image,
+    });
+  }
+
+
   // ----------------------------------------------------------------
   // GAME START / END
   // ----------------------------------------------------------------
+  
+  void finishTutorial(String gameId, String playerId) {
+    print("GameService: Player $playerId finished tutorial in game $gameId");
+    socket.emit('finishTutorial', {
+      'gameId': gameId,
+      'playerId': playerId,
+    });
+  }
+  
   void startGame(String gameId) {
     print("GameService: Requesting to start game for room $gameId");
     socket.emit('startGame', {'gameId': gameId});
@@ -127,6 +146,14 @@ class GameService {
       callback(List<dynamic>.from(data));
     });
   }
+
+  void onGameInfos(Function(Map<String, dynamic>) callback) {
+    socket.on('gameInfos', (data) {
+      print("GameService: gameInfos event received: $data");
+      callback(Map<String, dynamic>.from(data));
+    });
+  }
+
 
   // ----------------------------------------------------------------
   // MOVEMENT
@@ -192,7 +219,7 @@ class GameService {
   // ----------------------------------------------------------------
   void onCardDrawn(Function(Map<String, dynamic>) callback) {
     socket.on('cardDrawn', (data) {
-      print("GameService: Card drawn event received: $data");
+      print("DEBUG front: cardDrawn => $data");      
       callback(Map<String, dynamic>.from(data));
     });
   }

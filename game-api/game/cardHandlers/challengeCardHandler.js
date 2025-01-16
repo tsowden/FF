@@ -1,3 +1,5 @@
+// game/cardHandlers/challengeCardHandler.js
+
 const redisClient = require('../../config/redis');
 const GenericCardHandler = require('./genericCardHandler');
 
@@ -15,12 +17,10 @@ class ChallengeCardHandler extends GenericCardHandler {
     try {
       await redisClient.hSet(`game:${this.gameId}`, 'turnState', 'betting');
       await redisClient.hSet(`game:${this.gameId}`, 'bets', JSON.stringify({}));
-  
-      // Récupérer la currentCard stockée
+
       const cardJson = await redisClient.hGet(`game:${this.gameId}`, 'currentCard');
       const currentCard = JSON.parse(cardJson || '{}');
-      
-      // Ici, on renvoie betOptions dans la payload
+
       this.io.to(this.gameId).emit('turnStateChanged', {
         turnState: 'betting',
         betOptions: currentCard.validBets ?? [],
@@ -47,16 +47,14 @@ class ChallengeCardHandler extends GenericCardHandler {
       await redisClient.hSet(`game:${this.gameId}`, 'bets', JSON.stringify(bets));
       console.log(`ChallengeCardHandler: Bet "${bet}" recorded for player ${playerId}.`);
 
-      // Vérifier si tous les joueurs non actifs ont parié
       const players = JSON.parse(gameData.players || '[]');
       const nonActivePlayers = players.filter((p) => p.playerId !== gameData.activePlayerId);
       if (Object.keys(bets).length >= nonActivePlayers.length) {
         console.log(`ChallengeCardHandler: All bets received`);
-        // Attendre 2 secondes avant de démarrer la phase suivante
         setTimeout(async () => {
           console.log(`ChallengeCardHandler: Starting challenge after delay`);
           await this.startChallenge();
-        }, 2000); 
+        }, 2000);
       }
     } catch (error) {
       console.error(`ChallengeCardHandler: Error handling bet:`, error);
@@ -68,7 +66,14 @@ class ChallengeCardHandler extends GenericCardHandler {
       await redisClient.hSet(`game:${this.gameId}`, 'turnState', 'challengeInProgress');
       await redisClient.hSet(`game:${this.gameId}`, 'votes', JSON.stringify({}));
 
-      this.io.to(this.gameId).emit('turnStateChanged', { turnState: 'challengeInProgress' });
+      const cardJson = await redisClient.hGet(`game:${this.gameId}`, 'currentCard');
+      const currentCard = JSON.parse(cardJson || '{}');
+
+      this.io.to(this.gameId).emit('turnStateChanged', {
+        turnState: 'challengeInProgress',
+        betOptions: currentCard.validBets ?? [], 
+      });
+
       console.log(`ChallengeCardHandler: Challenge started for game ${this.gameId}.`);
     } catch (error) {
       console.error(`ChallengeCardHandler: Error starting challenge:`, error);
@@ -116,7 +121,7 @@ class ChallengeCardHandler extends GenericCardHandler {
       activePlayer.berries = (activePlayer.berries || 0) + berryReward;
       await redisClient.hSet(`game:${this.gameId}`, 'players', JSON.stringify(players));
 
-      // Notifier tous les clients avec la récompense
+      // Notifier tous les clients
       this.io.to(this.gameId).emit('challengeResult', {
         activePlayerName: activePlayer.playerName,
         result,

@@ -1,26 +1,28 @@
 import 'package:flutter/material.dart';
 
 class AppTheme {
-  // Couleurs principales
+  // ---------------------------
+  // COULEURS
+  // ---------------------------
   static const Color greenButton = Color(0xFF135836);
-  // static const Color darkerGreen = Color.fromARGB(255, 10, 52, 31);
   static const Color darkerGreen = Color.fromARGB(255, 6, 37, 22);
-  static const Color lightMint = Color.fromARGB(255, 211, 248, 228);
+  static const Color lightMint   = Color.fromARGB(255, 211, 248, 228);
   static const Color orangeTitle = Color.fromARGB(255, 240, 110, 10);
-  static const Color white = Colors.white;
-  static const Color correctGreen = Color(0xFF8BDD8E); 
-  static const Color incorrectRed = Color(0xFFF28080);
+  static const Color white       = Colors.white;
+  static const Color correctGreen  = Color(0xFF8BDD8E); 
+  static const Color incorrectRed  = Color(0xFFF28080);
 
-
-  // Image de fond par défaut
+  // ---------------------------
+  // IMAGE DE FOND
+  // ---------------------------
   static const String backgroundImage = 'assets/images/fond2.png';
 
-  // Thème global
+  // ---------------------------
+  // THEME GLOBAL
+  // ---------------------------
   static ThemeData themeData = ThemeData(
     primaryColor: greenButton,
     scaffoldBackgroundColor: Colors.transparent,
-
-    // Police par défaut
     fontFamily: 'Nunito-bold',
     textTheme: const TextTheme(
       displayLarge: TextStyle(
@@ -56,8 +58,6 @@ class AppTheme {
         color: greenButton,
       ),
     ),
-
-    // AppBar par défaut
     appBarTheme: const AppBarTheme(
       color: Colors.transparent,
       elevation: 0,
@@ -68,58 +68,68 @@ class AppTheme {
         color: white,
       ),
     ),
-
-    // Thème des boutons TextButton (Annuler/Confirmer par défaut)
     textButtonTheme: TextButtonThemeData(
       style: TextButton.styleFrom(
         foregroundColor: greenButton,
-        textStyle: const TextStyle(
+        textStyle: TextStyle(
           fontSize: 18,
           fontWeight: FontWeight.bold,
           fontFamily: 'Nunito',
         ),
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.all(Radius.circular(8)),
         ),
       ),
     ),
-
-    // Thème des Dialogs
     dialogTheme: DialogTheme(
       backgroundColor: lightMint,
-      titleTextStyle: const TextStyle(
+      titleTextStyle: TextStyle(
         fontSize: 22,
         fontWeight: FontWeight.bold,
         color: greenButton,
         fontFamily: 'Nunito',
       ),
-      contentTextStyle: const TextStyle(
+      contentTextStyle: TextStyle(
         fontSize: 16,
         color: greenButton,
         fontFamily: 'Nunito',
       ),
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
-        side: const BorderSide(color: greenButton, width: 4),
+        borderRadius: BorderRadius.all(Radius.circular(20)),
+        side: BorderSide(color: greenButton, width: 4),
       ),
     ),
   );
 
+  // ---------------------------
+  // BACKGROUND
+  // ---------------------------
+  static BoxDecoration backgroundDecoration() {
+    return const BoxDecoration(
+      image: DecorationImage(
+        image: AssetImage(backgroundImage),
+        fit: BoxFit.cover,
+      ),
+    );
+  }
 
+  // ---------------------------
+  // BOUTONS
+  // ---------------------------
   static Widget customButton({
     required String label,
     required VoidCallback onPressed,
     Color? backgroundColor,
   }) {
     final Color bgColor = backgroundColor ?? greenButton;
-    
+
     return Container(
       decoration: BoxDecoration(
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.8),
             blurRadius: 5,
-            offset: const Offset(4, 7)
+            offset: const Offset(4, 7),
           ),
         ],
         borderRadius: BorderRadius.circular(25),
@@ -129,9 +139,10 @@ class AppTheme {
         style: ElevatedButton.styleFrom(
           backgroundColor: bgColor,
           foregroundColor: white,
-          padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 50),
+          // Réduction de la hauteur du bouton
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 40),
           textStyle: const TextStyle(
-            fontSize: 22,
+            fontSize: 20,
             fontWeight: FontWeight.bold,
             fontFamily: 'Nunito',
           ),
@@ -148,14 +159,69 @@ class AppTheme {
     );
   }
 
+  // ---------------------------
+  // TEXT STYLES UTILES
+  // ---------------------------
 
-  // Widget pour le fond commun
-  static BoxDecoration backgroundDecoration() {
-    return const BoxDecoration(
-      image: DecorationImage(
-        image: AssetImage(backgroundImage),
-        fit: BoxFit.cover,
-      ),
+  // Petit style italic, ex. "About you:" ou "Turn:"
+  static TextStyle topLabelStyle(BuildContext context, double fontScale) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    return TextStyle(
+      fontFamily: 'Nunito',
+      fontWeight: FontWeight.w300,
+      fontStyle: FontStyle.italic,
+      fontSize: screenWidth * fontScale,
+      color: darkerGreen,
     );
   }
+
+  // Style du rang
+  static TextStyle rankStyle(BuildContext context, double fontScale) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    return TextStyle(
+      fontFamily: 'Nunito',
+      fontWeight: FontWeight.w300,
+      fontStyle: FontStyle.italic,
+      fontSize: screenWidth * fontScale,
+      color: darkerGreen,
+    );
+  }
+
+  // Style du nombre de berries dans le cercle
+  static TextStyle circleNumberStyle(double circleSize) {
+    return TextStyle(
+      fontSize: circleSize * 0.2,
+      color: Colors.white,
+      fontWeight: FontWeight.bold,
+      fontFamily: 'Nunito',
+    );
+  }
+
+  // Style du message pop-up transitoire
+  static BoxDecoration transientMessageBoxDecoration(double borderRadius) {
+    return BoxDecoration(
+      color: Colors.green[900],
+      borderRadius: BorderRadius.circular(borderRadius),
+      boxShadow: const [
+        BoxShadow(
+          color: Colors.black26,
+          blurRadius: 5,
+          offset: Offset(0, 3),
+        ),
+      ],
+    );
+  }
+
+  static TextStyle transientMessageTextStyle(double fontSize) {
+    return TextStyle(
+      fontSize: fontSize,
+      fontStyle: FontStyle.italic,
+      fontWeight: FontWeight.bold,
+      color: Colors.white,
+    );
+  }
+
+  // ...
+  // Tu peux continuer à rajouter ici d'autres styles plus spécifiques
+  // (par exemple pour cardName, description, etc.)
 }

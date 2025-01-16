@@ -98,6 +98,8 @@ const createGame = async (req, res) => {
           position: startingPosition,
           orientation: startingOrientation,
           berries: 0,
+          tutorialDone: false,
+          avatarBase64: '', 
         },
       ]),
       activePlayerId: playerId,
@@ -140,7 +142,6 @@ const joinGame = async (req, res) => {
     const playerId = uuidv4();
     console.log(`joinGame: Nouveau playerId="${playerId}" pour le joueur "${playerName}" rejoignant la partie.`);
 
-    // Position par défaut
     const startingPosition = getRandomCentralPosition();
     const startingOrientation = getRandomOrientation();
 
@@ -152,6 +153,8 @@ const joinGame = async (req, res) => {
       position: startingPosition,
       orientation: startingOrientation,
       berries: 0,
+      tutorialDone: false,
+      avatarBase64: '',
     });
 
     await redisClient.hSet(`game:${gameId}`, 'players', JSON.stringify(players));

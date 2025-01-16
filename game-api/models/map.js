@@ -42,7 +42,7 @@ const initialMap = [
   );
   
   function getCardsForSquare(x, y) {
-    // For now, we return an empty array since no cards are assigned
+    // empty for now
     return [];
   }
   

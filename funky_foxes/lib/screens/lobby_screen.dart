@@ -1,188 +1,235 @@
+// lib/screens/lobby_screen.dart
+
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../services/game_service.dart';
 import '../styles/app_theme.dart';
+import 'dart:convert'; // pour base64Encode, base64Decode
+
+import 'tutorial_screen.dart';
 import 'game_screen.dart';
 
 class LobbyScreen extends StatefulWidget {
+  final GameService gameService;      // (LIGNE AJOUTÉE)
   final String gameId;
   final String playerName;
   final bool isHost;
-  final String playerId; // Ajout du playerId
+  final String avatarBase64;
+  final String playerId; // on l’a déjà
 
-  LobbyScreen({required this.gameId, required this.playerId, required this.playerName, this.isHost = false});
+  const LobbyScreen({
+    Key? key,
+    required this.gameService,        // (LIGNE AJOUTÉE)
+    required this.gameId,
+    required this.playerId,
+    required this.playerName,
+    this.isHost = false,
+    this.avatarBase64 = '', // Nullable
+  }) : super(key: key);
 
   @override
   _LobbyScreenState createState() => _LobbyScreenState();
 }
 
 class _LobbyScreenState extends State<LobbyScreen> {
+
   late final GameService _gameService;
   final ImagePicker _imagePicker = ImagePicker();
+
+  // On stocke tout via playerId
+  List<String> _playerIds = [];
+  Map<String, String> _playerNames = {};
+  Map<String, bool> _readyStatus = {};
+  Map<String, String> _avatars = {};
+
   File? _playerImage;
-  String? playerId; // Stockage du playerId
-  List<String> players = [];
-  Map<String, bool> readyStatus = {};
   int readyCount = 0;
 
   @override
   void initState() {
     super.initState();
+    _gameService = widget.gameService;  // (LIGNE AJOUTÉE)
 
-    _gameService = GameService();
-
-    print('LobbyScreen: Initialisation pour la partie ${widget.gameId} avec le joueur ${widget.playerName}');
+    print('LobbyScreen: Init pour gameId=${widget.gameId} avec playerName=${widget.playerName}, playerId=${widget.playerId}');
 
     // Connexion au jeu via Socket.IO
     _gameService.connectToGame(widget.gameId);
-
-    // Récupérer le playerId
-    _fetchPlayerId();
-
-    // Écoute des événements
     _setupSocketListeners();
-  }
 
-  void _fetchPlayerId() async {
-    try {
-      final fetchedPlayerId = await _gameService.getPlayerId(widget.gameId, widget.playerName);
-      setState(() {
-        playerId = fetchedPlayerId;
-      });
-      print('LobbyScreen: playerId récupéré : $playerId');
-    } catch (e) {
-      print('LobbyScreen: Erreur lors de la récupération du playerId : $e');
-    }
+    // Rejoindre la room
+    _gameService.joinRoom(widget.gameId);
   }
 
   void _setupSocketListeners() {
+    // currentPlayers
     _gameService.socket.on('currentPlayers', (data) {
-      print('LobbyScreen: Événement currentPlayers reçu: $data');
+      print('LobbyScreen: currentPlayers => $data');
       setState(() {
-        players = List<String>.from(data.map((player) => player['playerName']));
-        readyStatus.clear();
-        for (var player in data) {
-          readyStatus[player['playerName']] = player['ready'];
+        // on vide nos structures
+        _playerIds.clear();
+        _playerNames.clear();
+        _readyStatus.clear();
+        _avatars.clear();
+        readyCount = 0;
+
+        // data est un tableau de joueurs
+        for (var p in data) {
+          final pid = p['playerId'] as String;
+          final pname = p['playerName'] as String;
+          final isReady = p['ready'] as bool? ?? false;
+          final avatarB64 = p['avatarBase64'] as String? ?? '';
+
+          // On garde l'ordre d'arrivée:
+          _playerIds.add(pid);
+
+          // On stocke
+          _playerNames[pid] = pname;
+          _readyStatus[pid] = isReady;
+          _avatars[pid] = avatarB64;
+
+          if (isReady) readyCount++;
         }
-        readyCount = readyStatus.values.where((ready) => ready).length;
       });
     });
 
+    // playerJoined
     _gameService.socket.on('playerJoined', (data) {
-      print('LobbyScreen: Événement playerJoined reçu: $data');
+      print('LobbyScreen: playerJoined => $data');
       setState(() {
-        if (!players.contains(data['playerName'])) {
-          players.add(data['playerName']);
-          readyStatus[data['playerName']] = false;
-        }
+        final pid = data['playerId'];
+        final pname = data['playerName'] ?? '???';
+        _playerIds.add(pid);
+        _playerNames[pid] = pname;
+        _readyStatus[pid] = false;
+        _avatars[pid] = data['avatarBase64'] ?? '';
       });
     });
 
     _gameService.socket.on('readyStatusUpdate', (data) {
-      print('LobbyScreen: Événement readyStatusUpdate reçu: $data');
+      final pName = data['playerName'];
+      final isReady = data['isReady'] as bool;
+
+      // On cherche le pid correspondant à ce pName
+      final pid = _playerIds.firstWhere(
+        (candidatePid) => _playerNames[candidatePid] == pName,
+        orElse: () => '',
+      );
+
+      if (pid.isEmpty) {
+        print("ERROR: readyStatusUpdate => inconnu, pName=$pName");
+        return;
+      }
+
       setState(() {
-        readyStatus[data['playerName']] = data['isReady'];
-        readyCount = readyStatus.values.where((ready) => ready).length;
+        _readyStatus[pid] = isReady;
+        readyCount = _readyStatus.values.where((r) => r).length;
       });
     });
 
+
+    // allPlayersReady
     _gameService.socket.on('allPlayersReady', (_) {
-      print('LobbyScreen: Événement allPlayersReady reçu');
+      print('LobbyScreen: allPlayersReady => tous prêts !');
       if (widget.isHost) _showStartGameDialog();
     });
 
+    // startGame
     _gameService.socket.on('startGame', (data) {
-      print('LobbyScreen: Événement startGame reçu. Redirection vers GameScreen...');
-      try {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => GameScreen(
-              gameId: widget.gameId,
-              playerName: widget.playerName,
-              playerId: widget.playerId, 
-              gameService: _gameService,
-              initialData: Map<String, dynamic>.from(data),
-            ),
+      print('LobbyScreen: startGame => data=$data');
+      // Naviguer vers Tutorial
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => TutorialScreen(
+            gameId: widget.gameId,
+            playerName: widget.playerName,
+            playerId: widget.playerId,
+            gameService: _gameService,
           ),
-        );
-      } catch (e) {
-        print('LobbyScreen: Erreur lors de la redirection vers GameScreen : $e');
-      }
+        ),
+      );
     });
-
-    _gameService.onActivePlayerChanged((activePlayerName) {
-      print('LobbyScreen: Joueur actif changé : $activePlayerName');
-    });
-
-    _gameService.joinRoom(widget.gameId);
   }
 
   @override
   void dispose() {
-    // Ne pas déconnecter le socket ici car GameService est partagé
+    // NOTE: on ne déconnecte pas le socket pour le moment,
+    // car le GameService peut être utilisé plus tard
     super.dispose();
   }
 
   Future<void> _takePhoto() async {
-    final XFile? pickedFile = await _imagePicker.pickImage(source: ImageSource.camera);
-    if (pickedFile != null) {
+    final XFile? picked = await _imagePicker.pickImage(source: ImageSource.camera);
+    if (picked == null) return;
+
+    final bytes = await picked.readAsBytes();
+    final base64Str = base64Encode(bytes);
+    print("LobbyScreen: Photo prise => base64 length=${base64Str.length}");
+
+    if (widget.playerId.isNotEmpty) {
+      print("DEBUG: Emitting updateAvatar with playerId=${widget.playerId}");
+      _gameService.updateAvatar(widget.gameId, widget.playerId, base64Str);
+
       setState(() {
-        _playerImage = File(pickedFile.path);
+        // Mémoriser localement (si on veut afficher un avatar local)
+        _avatars[widget.playerId] = base64Str;
       });
     }
+
+    setState(() {
+      _playerImage = File(picked.path);
+    });
   }
 
   void _toggleReadyStatus(bool isReady) {
-    print('LobbyScreen: Changement du statut prêt pour ${widget.playerName} à $isReady');
+    print('LobbyScreen: setReadyStatus($isReady) for playerId=${widget.playerId} => name=${widget.playerName}');
     _gameService.setReadyStatus(widget.gameId, widget.playerName, isReady);
+
     setState(() {
-      readyStatus[widget.playerName] = isReady;
-      readyCount = readyStatus.values.where((ready) => ready).length;
+      // local
+      _readyStatus[widget.playerId] = isReady;
+      readyCount = _readyStatus.values.where((r) => r == true).length;
     });
-  }
+}
+
 
   void _showStartGameDialog() {
     showDialog(
       context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: Text("All players are ready"),
-          content: Text("Do you want to start the game?"),
-          actions: [
-            TextButton(
-              child: Text("No"),
-              onPressed: () {
-                print('LobbyScreen: Démarrage de la partie annulé par l\'hôte');
-                Navigator.of(context).pop();
-              },
-            ),
-            TextButton(
-              child: Text("Yes"),
-              onPressed: () {
-                print('LobbyScreen: L\'hôte a choisi de démarrer la partie');
-                _gameService.startGame(widget.gameId);
-                Navigator.of(context).pop();
-              },
-            ),
-          ],
-        );
-      },
+      builder: (ctx) => AlertDialog(
+        title: Text("All players are ready!"),
+        content: Text("Do you want to start the game now?"),
+        actions: [
+          TextButton(
+            onPressed: () {
+              print('LobbyScreen: L’hôte annule le startGame');
+              Navigator.pop(ctx);
+            },
+            child: Text("No"),
+          ),
+          TextButton(
+            onPressed: () {
+              print('LobbyScreen: L’hôte confirme le startGame');
+              _gameService.startGame(widget.gameId);
+              Navigator.pop(ctx);
+            },
+            child: Text("Yes"),
+          ),
+        ],
+      ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
+    final isReady = _readyStatus[widget.playerId] ?? false;
     final screenHeight = MediaQuery.of(context).size.height;
-    final isReady = readyStatus[widget.playerName] ?? false;
 
     return Scaffold(
       body: Stack(
         children: [
-          Container(
-            decoration: AppTheme.backgroundDecoration(),
-          ),
+          Container(decoration: AppTheme.backgroundDecoration()),
           Padding(
             padding: const EdgeInsets.all(16.0),
             child: Column(
@@ -203,6 +250,8 @@ class _LobbyScreenState extends State<LobbyScreen> {
                       ),
                 ),
                 SizedBox(height: screenHeight * 0.03),
+
+                // Avatar
                 GestureDetector(
                   onTap: _takePhoto,
                   child: Container(
@@ -219,16 +268,34 @@ class _LobbyScreenState extends State<LobbyScreen> {
                             )
                           : null,
                     ),
-                    child: _playerImage == null
-                        ? Icon(
+                    child: _playerImage != null
+                      ? ClipOval(
+                          child: Image.file(
+                            _playerImage!,
+                            fit: BoxFit.cover,
+                            width: screenHeight * 0.15,
+                            height: screenHeight * 0.15,
+                          ),
+                        )
+                      : (_avatars[widget.playerId]?.isNotEmpty ?? false)
+                          ? ClipOval(
+                              child: Image.memory(
+                                base64Decode(_avatars[widget.playerId]!),
+                                fit: BoxFit.cover,
+                                width: screenHeight * 0.15,
+                                height: screenHeight * 0.15,
+                              ),
+                            )
+                          : Icon(
                             Icons.camera_alt_outlined,
                             size: screenHeight * 0.07,
                             color: AppTheme.greenButton,
-                          )
-                        : null,
+                          ),
                   ),
                 ),
                 SizedBox(height: screenHeight * 0.02),
+
+                // Nom
                 Container(
                   padding: EdgeInsets.all(12),
                   decoration: BoxDecoration(
@@ -247,11 +314,14 @@ class _LobbyScreenState extends State<LobbyScreen> {
                   ),
                 ),
                 SizedBox(height: screenHeight * 0.03),
+
                 Text(
-                  'Players ready: $readyCount/${players.length}',
+                  'Players ready: $readyCount/${_playerIds.length}',
                   style: Theme.of(context).textTheme.bodyText1?.copyWith(fontSize: 18),
                 ),
                 SizedBox(height: screenHeight * 0.03),
+
+                // Liste des joueurs
                 Expanded(
                   child: Container(
                     decoration: BoxDecoration(
@@ -261,34 +331,34 @@ class _LobbyScreenState extends State<LobbyScreen> {
                     ),
                     padding: const EdgeInsets.all(8.0),
                     child: ListView.builder(
-                      itemCount: players.length,
-                      itemBuilder: (context, index) {
-                        final player = players[index];
-                        final playerIsReady = readyStatus[player] ?? false;
-                        return Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 4.0),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(
-                                player,
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  color: playerIsReady ? Colors.green : Colors.red,
+                    itemCount: _playerIds.length,
+                          itemBuilder: (context, index) {
+                            final pid = _playerIds[index];
+                            final pname = _playerNames[pid] ?? '???';
+                            final pReady = _readyStatus[pid] ?? false;
+
+                            return Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  pname,
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    color: pReady ? Colors.green : Colors.red,
+                                  ),
                                 ),
-                              ),
-                              Icon(
-                                playerIsReady ? Icons.check_circle : Icons.cancel,
-                                color: playerIsReady ? Colors.green : Colors.red,
-                              ),
-                            ],
-                          ),
-                        );
-                      },
-                    ),
+                                Icon(
+                                  pReady ? Icons.check_circle : Icons.cancel,
+                                  color: pReady ? Colors.green : Colors.red,
+                                ),
+                              ],
+                            );
+                          },
+                        ),
                   ),
                 ),
                 SizedBox(height: screenHeight * 0.03),
+
                 AppTheme.customButton(
                   label: isReady ? "Unready" : "Ready!",
                   onPressed: () => _toggleReadyStatus(!isReady),
