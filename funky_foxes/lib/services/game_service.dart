@@ -11,7 +11,6 @@ class GameService {
   // CONSTRUCTOR & SOCKET INITIALIZATION
   // ----------------------------------------------------------------
   GameService() {
-    // Initialize the socket in the constructor
     socket = IO.io(
       // 'http://192.168.0.53:3000', // wifi
       'http://192.168.155.236:3000', // 5G

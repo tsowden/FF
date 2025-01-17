@@ -5,7 +5,6 @@ class ApiService {
   // static const String baseUrl = 'http://192.168.0.53:3000'; // Wifi
   static const String baseUrl = 'http://192.168.155.236:3000'; // 5G
 
-  /// Créer une partie
   Future<Map<String, String>?> createGame(String playerName) async {
     print('ApiService.createGame($playerName) -> POST $baseUrl/api/game/create-game');
     
@@ -43,7 +42,6 @@ class ApiService {
     }
   }
 
-  /// Rejoindre une partie
   Future<Map<String, String>?> joinGame(String gameId, String playerName) async {
     print('ApiService.joinGame(gameId=$gameId, playerName=$playerName) -> POST $baseUrl/api/game/join-game');
     

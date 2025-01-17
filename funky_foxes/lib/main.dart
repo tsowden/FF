@@ -11,8 +11,9 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Funky Foxes',
-      theme: AppTheme.themeData, // Appliquez le thème global
+      theme: AppTheme.themeData, 
       home: HomeScreen(),
+      debugShowCheckedModeBanner: false,
     );
   }
 }

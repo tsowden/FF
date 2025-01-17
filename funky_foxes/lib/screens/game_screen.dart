@@ -173,11 +173,11 @@ class _GameScreenState extends State<GameScreen> {
       final index = betOptions.indexOf(bet);
       String message;
       if (index == 0) {
-        message = "$playerName ne croit pas en vous.";
+        message = "$playerName doesn't believe in you at all.";
       } else if (index == betOptions.length - 1) {
-        message = "$playerName mise tout sur vous !";
+        message = "$playerName bets everything on you!";
       } else {
-        message = "$playerName croit moyennement en vous.";
+        message = "$playerName believes in you averagely.";
       }
       if (isPlayerActive) {
         _showTransientMessage(playerName, message);

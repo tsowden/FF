@@ -139,7 +139,6 @@ class AppTheme {
         style: ElevatedButton.styleFrom(
           backgroundColor: bgColor,
           foregroundColor: white,
-          // Réduction de la hauteur du bouton
           padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 40),
           textStyle: const TextStyle(
             fontSize: 20,
@@ -163,7 +162,6 @@ class AppTheme {
   // TEXT STYLES UTILES
   // ---------------------------
 
-  // Petit style italic, ex. "About you:" ou "Turn:"
   static TextStyle topLabelStyle(BuildContext context, double fontScale) {
     final screenWidth = MediaQuery.of(context).size.width;
     return TextStyle(
@@ -175,7 +173,6 @@ class AppTheme {
     );
   }
 
-  // Style du rang
   static TextStyle rankStyle(BuildContext context, double fontScale) {
     final screenWidth = MediaQuery.of(context).size.width;
     return TextStyle(
@@ -187,7 +184,6 @@ class AppTheme {
     );
   }
 
-  // Style du nombre de berries dans le cercle
   static TextStyle circleNumberStyle(double circleSize) {
     return TextStyle(
       fontSize: circleSize * 0.2,
@@ -197,7 +193,6 @@ class AppTheme {
     );
   }
 
-  // Style du message pop-up transitoire
   static BoxDecoration transientMessageBoxDecoration(double borderRadius) {
     return BoxDecoration(
       color: Colors.green[900],
@@ -221,7 +216,4 @@ class AppTheme {
     );
   }
 
-  // ...
-  // Tu peux continuer à rajouter ici d'autres styles plus spécifiques
-  // (par exemple pour cardName, description, etc.)
 }
